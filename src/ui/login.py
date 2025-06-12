@@ -62,6 +62,19 @@ def create_session(user_id: int, db_path: str = DB_PATH) -> int:
     return session_id
 
 
+def end_session(session_id: int, db_path: str = DB_PATH) -> None:
+    """Mark ``session_id`` as finished by setting its ``end_time``."""
+    end_time = datetime.utcnow().isoformat()
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE scan_sessions SET end_time=? WHERE session_id=?",
+        (end_time, session_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 class LoginWindow(ctk.CTk):
     """
     Simple login window returning the authenticated user session info.
