@@ -142,6 +142,7 @@ These tables together:
 - On receiving, immediately allocate scanned parts to BO if match found
 - Show GO-ITEM if relevant
 - Update BO report at end of receiving session
+- BO integration activates when the ADMIN uploads a BO Excel file
 
 ## 12. NEXT STEPS
 Let’s clarify step-by-step the following missing pieces:
