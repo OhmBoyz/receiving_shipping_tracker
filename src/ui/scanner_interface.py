@@ -6,12 +6,14 @@ import csv
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+import pandas as pd
 
 import customtkinter as ctk
 from tkinter import messagebox
 
-from typing import Optional
+from logic import bo_report
 
 DB_PATH = "receiving_tracker.db"
 PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
@@ -67,6 +69,7 @@ class ShipperWindow(ctk.CTk):
         self._csv_cache: Dict[str, str] | None = None
         self.user_id = user_id
         self.session_id = self._get_session()
+        self.bo_df: Optional[pd.DataFrame] = None
 
         self.title("Shipper Interface")
         self.geometry("900x600")
@@ -149,6 +152,15 @@ class ShipperWindow(ctk.CTk):
         data = {row[0]: int(row[1]) for row in cur.fetchall()}
         conn.close()
         return data
+
+    def load_bo_report(self, filepath: str) -> None:
+        """Load the BO Excel file for later use."""
+        try:
+            self.bo_df = bo_report.load_bo_excel(filepath)
+        except NotImplementedError:
+            self.bo_df = None
+        except Exception as exc:  # pragma: no cover - placeholder
+            messagebox.showerror("BO load error", str(exc))
 
     def _insert_event(self, part: str, qty: int, raw: str) -> None:
         timestamp = datetime.utcnow().isoformat()
@@ -330,6 +342,12 @@ class ShipperWindow(ctk.CTk):
             messagebox.showwarning("Invalid qty", "Quantity must be > 0")
             return
         part = self._resolve_part(raw)
+        if self.bo_df is not None:
+            try:
+                bo_report.find_bo_match(part, self.bo_df)
+            except NotImplementedError:
+                pass
+
         matching = [ln for ln in self.lines if ln.part == part]
         if not matching:
             messagebox.showwarning("Unknown part", f"{part} not on waybill")
