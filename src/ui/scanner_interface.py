@@ -66,7 +66,7 @@ class ShipperWindow(ctk.CTk):
         super().__init__()
         self.db_path = db_path
         self.csv_path = csv_path
-        self._csv_cache: Dict[str, str] | None = None
+        self._csv_cache: Dict[str, str] = {}#| None = None
         self.user_id = user_id
         self.session_id = self._get_session()
         self.bo_df: Optional[pd.DataFrame] = None
@@ -250,7 +250,8 @@ class ShipperWindow(ctk.CTk):
 
         for row in rows:
             code = row[3]
-            friendly = SUBINV_MAP.get(code, code)
+            #friendly = SUBINV_MAP.get(code, code)
+            friendly: str = SUBINV_MAP.get(code) or code
             line = _Line(row[0], row[1], int(row[2]), friendly, code)
             self.lines.append(line)
 
@@ -331,6 +332,7 @@ class ShipperWindow(ctk.CTk):
 
         if self._csv_cache is None:
             self._load_csv_cache()
+        assert self._csv_cache is not None
         return self._csv_cache.get(code, code)
 
     def process_scan(self, event=None) -> None:
