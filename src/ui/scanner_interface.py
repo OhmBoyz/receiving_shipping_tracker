@@ -73,6 +73,11 @@ class ShipperWindow(ctk.CTk):
         self.scan_entry.pack(side="left", fill="x", expand=True)
         self.scan_entry.bind("<Return>", self.process_scan)
 
+        finish_btn = ctk.CTkButton(
+            controls, text="Finish Waybill", command=self.manual_finish
+        )
+        finish_btn.pack(side="left", padx=(20, 0))
+
         self.lines: List[_Line] = []
         self.load_waybill(self.waybill_var.get())
 
@@ -154,8 +159,12 @@ class ShipperWindow(ctk.CTk):
         conn.close()
 
         self._record_summary()
-        messagebox.showinfo("Waybill complete", "All lines scanned")
+        messagebox.showinfo("Waybill finished", "Scan summary saved")
         self.destroy()
+
+    def manual_finish(self) -> None:
+        if messagebox.askyesno("Confirm", "Finish current waybill?"):
+            self._finish_session()
 
     def _record_summary(self) -> None:
         scans = self._fetch_scans(self.waybill_var.get())
