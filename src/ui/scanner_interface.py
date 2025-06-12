@@ -15,7 +15,7 @@ from tkinter import messagebox
 
 from logic import bo_report
 
-from config import DB_PATH
+from src.config import DB_PATH
 
 #DB_PATH = "receiving_tracker.db"
 PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"

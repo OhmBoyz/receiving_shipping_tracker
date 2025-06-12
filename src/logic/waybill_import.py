@@ -8,7 +8,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from config import DB_PATH
+from src.config import DB_PATH
 
 #DB_PATH = "receiving_tracker.db"
 

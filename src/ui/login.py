@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 import customtkinter as ctk
 from tkinter import messagebox
 
-from config import DB_PATH
+from src.config import DB_PATH
 
 #DB_PATH = "receiving_tracker.db"
 
