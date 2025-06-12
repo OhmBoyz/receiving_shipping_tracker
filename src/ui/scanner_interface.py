@@ -9,6 +9,8 @@ from typing import Dict, List
 import customtkinter as ctk
 from tkinter import messagebox
 
+from typing import Optional
+
 DB_PATH = "receiving_tracker.db"
 
 
@@ -27,6 +29,7 @@ class _Line:
         self.qty_total = qty
         self.subinv = subinv
         self.scanned = 0
+        self.rem_label: Optional[ctk.CTkLabel] = None
         self.progress = ctk.CTkProgressBar(master=None)
 
     def remaining(self) -> int:
@@ -245,7 +248,8 @@ class ShipperWindow(ctk.CTk):
         ratio = line.scanned / line.qty_total if line.qty_total else 0
         line.progress.set(ratio)
         line.progress.configure(progress_color=_color_from_ratio(ratio))
-        line.rem_label.configure(text=str(line.remaining()))
+        if line.rem_label is not None:
+            line.rem_label.configure(text=str(line.remaining()))
 
     def _resolve_part(self, code: str) -> str | None:
         code = code.strip()
@@ -290,6 +294,10 @@ class ShipperWindow(ctk.CTk):
             messagebox.showwarning("Over scan", "Quantity exceeds expected")
             return
 
+        part = self._resolve_part(raw)
+        if part is None:
+            messagebox.showwarning("Invalid part", "Could not resolve scanned code")
+            return
         self._insert_event(part, qty, raw)
         self.scan_var.set("")
         self.qty_var.set(1)
