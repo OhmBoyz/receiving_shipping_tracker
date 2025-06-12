@@ -1,50 +1,90 @@
-"""
-Module: waybill_import.py
+"""Waybill import utilities."""
 
-Handles importing a Waybill Excel file and inserting valid entries into the database.
-
-Expected format: See section 7 of docs/spec.md
-"""
+from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
+from typing import Iterable
+
 import pandas as pd
 
-def import_waybill(filepath: str, db_path: str):
-    # TODO: Load Excel with pandas
-    df = pd.read_excel(filepath, header=1)  # Row 2 has headers, row 1 ignored
+DB_PATH = "receiving_tracker.db"
 
-    # TODO: Clean data (convert cost commas to dots, ensure numeric QTY)
-    df['ITEM_COSTS'] = df['ITEM_COSTS'].astype(str).str.replace(',', '.').astype(float)
-    df['SHP QTY'] = pd.to_numeric(df['SHP QTY'], errors='coerce').fillna(0).astype(int)
+REQUIRED_COLUMNS = [
+    "ITEM",
+    "DESCRIPTION",
+    "SHP QTY",
+    "SUBINV",
+    "Locator",
+    "Waybill",
+    "ITEM_COSTS",
+    "SHIP_DATE",
+]
 
-    # TODO: Connect to the SQLite database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
 
-    # TODO: Insert each row into the waybill_lines table
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO waybill_lines (
-                waybill_number,
-                part_number,
-                qty_total,
-                subinv,
-                locator,
-                description,
-                item_cost,
-                date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            str(row['Waybill']),
-            str(row['ITEM']),
-            int(row['SHP QTY']),
-            str(row['SUBINV']),
-            str(row['Locator']),
-            str(row['DESCRIPTION']),
-            float(row['ITEM_COSTS']),
-            str(row['SHIP_DATE'])[:10]
-        ))
+def _load_excel(filepath: str | Path) -> pd.DataFrame:
+    """Load the Excel waybill using pandas."""
+    df = pd.read_excel(filepath, header=1)
+    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        raise ValueError(f"Waybill missing columns: {', '.join(missing)}")
+    return df
 
-    conn.commit()
-    conn.close()
-    print(f"Waybill '{filepath}' imported successfully.")
+
+def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a cleaned dataframe with required columns and types."""
+    df = df[REQUIRED_COLUMNS].copy()
+    df["ITEM"] = df["ITEM"].astype(str).str.strip()
+    df["DESCRIPTION"] = df["DESCRIPTION"].astype(str).str.strip()
+    df["SUBINV"] = df["SUBINV"].astype(str).str.strip()
+    df["Locator"] = df["Locator"].fillna("").astype(str).str.strip()
+    df["Waybill"] = df["Waybill"].astype(str).str.strip()
+    df["SHP QTY"] = (
+        pd.to_numeric(df["SHP QTY"], errors="coerce").fillna(0).astype(int)
+    )
+    df["ITEM_COSTS"] = (
+        df["ITEM_COSTS"]
+        .astype(str)
+        .str.replace(" ", "")
+        .str.replace(",", ".")
+        .astype(float)
+    )
+    df["SHIP_DATE"] = (
+        pd.to_datetime(df["SHIP_DATE"], errors="coerce").dt.date.astype(str)
+    )
+    return df
+
+
+def _insert_rows(rows: Iterable[tuple], db_path: str) -> int:
+    """Insert rows into waybill_lines and return number inserted."""
+    query = (
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total,"
+        " subinv, locator, description, item_cost, date) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.executemany(query, rows)
+        conn.commit()
+        return cursor.rowcount if cursor.rowcount != -1 else len(rows)
+
+
+def import_waybill(filepath: str, db_path: str = DB_PATH) -> int:
+    """Import ``filepath`` and return the number of inserted rows."""
+    df = _load_excel(filepath)
+    df = _clean_dataframe(df)
+    rows = [
+        (
+            row["Waybill"],
+            row["ITEM"],
+            row["SHP QTY"],
+            row["SUBINV"],
+            row["Locator"],
+            row["DESCRIPTION"],
+            row["ITEM_COSTS"],
+            row["SHIP_DATE"],
+        )
+        for _, row in df.iterrows()
+    ]
+    inserted = _insert_rows(rows, db_path)
+    return inserted
