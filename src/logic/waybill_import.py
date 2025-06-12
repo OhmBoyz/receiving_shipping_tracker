@@ -62,6 +62,7 @@ def _insert_rows(rows: Iterable[tuple], db_path: str) -> int:
         " subinv, locator, description, item_cost, date) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
+    rows = list(rows)
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.executemany(query, rows)
