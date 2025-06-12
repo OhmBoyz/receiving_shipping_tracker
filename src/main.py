@@ -5,28 +5,29 @@ Provides login screen and routes user to the appropriate interface based on role
 This file serves as the program entry point.
 """
 
-# TODO: Initialize app (can use tkinter, customtkinter, or other GUI framework)
-# TODO: Prompt user for login (username + password)
-# TODO: Validate login against `users` table in SQLite DB (`receiving_tracker.db`)
-# TODO: On success, start a session and record it in `scan_sessions`
-# TODO: If role == 'admin':
-#           Show admin interface (upload waybill, view summaries, manage users)
-#       elif role == 'shipper':
-#           Show receiving interface (select palette, scan parts, see progress)
-# TODO: If login fails, show error and allow retry
+from ui.admin_interface import start_admin_interface
+from ui.login import end_session, prompt_login
+from ui.scanner_interface import start_shipper_interface
 
-# TODO: Ensure proper error handling and logging
-# TODO: At shutdown, close any open sessions properly (update `end_time`)
 
-# Example code structure (suggestion):
-# def main():
-#     show_login_screen()
-#     if authenticated:
-#         start_user_session()
-#         if role == 'admin':
-#             launch_admin_interface()
-#         elif role == 'shipper':
-#             launch_shipper_interface()
-#
-# if __name__ == "__main__":
-#     main()
+def main() -> None:
+    """Prompt for login and launch the appropriate interface."""
+
+    login_info = prompt_login()
+    if login_info is None:
+        print("Login cancelled")
+        return
+
+    session_id, user_id, _username, role = login_info
+
+    try:
+        if role.upper() == "ADMIN":
+            start_admin_interface()
+        else:
+            start_shipper_interface(user_id)
+    finally:
+        end_session(session_id)
+
+
+if __name__ == "__main__":
+    main()
