@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import sqlite3
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List
 
@@ -12,6 +14,7 @@ from tkinter import messagebox
 from typing import Optional
 
 DB_PATH = "receiving_tracker.db"
+PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
 
 
 def _color_from_ratio(ratio: float) -> str:
@@ -37,9 +40,16 @@ class _Line:
 
 
 class ShipperWindow(ctk.CTk):
-    def __init__(self, user_id: int, db_path: str = DB_PATH):
+    def __init__(
+        self,
+        user_id: int,
+        db_path: str = DB_PATH,
+        csv_path: str = PART_IDENTIFIERS_CSV,
+    ):
         super().__init__()
         self.db_path = db_path
+        self.csv_path = csv_path
+        self._csv_cache: Dict[str, str] | None = None
         self.user_id = user_id
         self.session_id = self._get_session()
 
@@ -251,7 +261,24 @@ class ShipperWindow(ctk.CTk):
         if line.rem_label is not None:
             line.rem_label.configure(text=str(line.remaining()))
 
-    def _resolve_part(self, code: str) -> str | None:
+    def _load_csv_cache(self) -> None:
+        """Load the part identifier CSV into ``self._csv_cache``."""
+        self._csv_cache = {}
+        path = Path(self.csv_path)
+        if not path.is_file():
+            return
+        with open(path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                part = (row.get("part_number") or "").strip()
+                upc = (row.get("upc_code") or "").strip()
+                alt = (row.get("alt_code") or "").strip()
+                if upc:
+                    self._csv_cache[upc] = part
+                if alt:
+                    self._csv_cache[alt] = part
+
+    def _resolve_part(self, code: str) -> str:
         code = code.strip()
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
@@ -261,7 +288,12 @@ class ShipperWindow(ctk.CTk):
         )
         row = cur.fetchone()
         conn.close()
-        return row[0] if row else code
+        if row:
+            return row[0]
+
+        if self._csv_cache is None:
+            self._load_csv_cache()
+        return self._csv_cache.get(code, code)
 
     def process_scan(self, event=None) -> None:
         raw = self.scan_var.get().strip()
@@ -308,7 +340,11 @@ class ShipperWindow(ctk.CTk):
     # end of class
 
 
-def start_shipper_interface(user_id: int, db_path: str = DB_PATH) -> None:
+def start_shipper_interface(
+    user_id: int,
+    db_path: str = DB_PATH,
+    csv_path: str = PART_IDENTIFIERS_CSV,
+) -> None:
     """Launch the shipper interface for ``user_id``."""
-    app = ShipperWindow(user_id, db_path)
+    app = ShipperWindow(user_id, db_path, csv_path)
     app.mainloop()
