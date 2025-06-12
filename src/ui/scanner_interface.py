@@ -22,12 +22,27 @@ def _color_from_ratio(ratio: float) -> str:
     return f"#{red:02x}{green:02x}00"
 
 
+SUBINV_MAP = {
+    "DRV-AMO": "AMO",
+    "DRV-RM": "KANBAN",
+}
+
+
 class _Line:
-    def __init__(self, rowid: int, part: str, qty: int, subinv: str):
+    def __init__(
+        self,
+        rowid: int,
+        part: str,
+        qty: int,
+        subinv: str,
+        subinv_code: str | None = None,
+    ) -> None:
         self.rowid = rowid
         self.part = part
         self.qty_total = qty
         self.subinv = subinv
+        # keep the original subinv code for potential DB updates
+        self.subinv_code = subinv_code if subinv_code is not None else subinv
         self.scanned = 0
         self.rem_label: Optional[ctk.CTkLabel] = None
         self.progress = ctk.CTkProgressBar(master=None)
@@ -203,7 +218,9 @@ class ShipperWindow(ctk.CTk):
         conn.close()
 
         for row in rows:
-            line = _Line(row[0], row[1], int(row[2]), row[3])
+            code = row[3]
+            friendly = SUBINV_MAP.get(code, code)
+            line = _Line(row[0], row[1], int(row[2]), friendly, code)
             self.lines.append(line)
 
         # allocate scanned qty across lines (AMO first)
