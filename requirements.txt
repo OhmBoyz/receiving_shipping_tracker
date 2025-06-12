@@ -1,0 +1,4 @@
+pandas>=2.2
+openpyxl>=3.1      # lecture/écriture Excel (Waybill)
+customtkinter>=5.2 # UI moderne sur Tk
+pillow>=10.3       # images/icônes éventuels
