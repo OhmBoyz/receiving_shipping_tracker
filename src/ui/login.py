@@ -17,7 +17,9 @@ from typing import Optional, Tuple
 import customtkinter as ctk
 from tkinter import messagebox
 
-DB_PATH = "receiving_tracker.db"
+from config import DB_PATH
+
+#DB_PATH = "receiving_tracker.db"
 
 def authenticate_user(
     username: str,

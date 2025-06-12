@@ -13,7 +13,9 @@ from tkinter import filedialog, messagebox, ttk
 
 from logic import waybill_import
 
-DB_PATH = "receiving_tracker.db"
+from config import DB_PATH
+
+#DB_PATH = "receiving_tracker.db"
 
 
 # ---------------------------------------------------------------------------

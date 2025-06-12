@@ -8,7 +8,9 @@ from typing import Iterable
 
 import pandas as pd
 
-DB_PATH = "receiving_tracker.db"
+from config import DB_PATH
+
+#DB_PATH = "receiving_tracker.db"
 
 REQUIRED_COLUMNS = [
     "ITEM",

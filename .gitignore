@@ -4,3 +4,6 @@ __pycache__/
 
 # Ignore local database file
 receiving_tracker.db
+
+# Ignore misc scripts
+send_user.py
