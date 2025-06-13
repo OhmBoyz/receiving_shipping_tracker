@@ -273,8 +273,8 @@ class ShipperWindow(ctk.CTk):
             rem_label.pack(side="left")
 
             for ln in lines:
-                ln.progress = pb
-                ln.rem_label = rem_label
+                ln.progress = pb # type: ignore[attr-defined]
+                ln.rem_label = rem_label # type: ignore[attr-defined]
             self._update_line_widgets(lines[0])
 
         self.refresh_progress_table()
@@ -286,11 +286,11 @@ class ShipperWindow(ctk.CTk):
         total_qty = sum(l.qty_total for l in group)
         total_scanned = sum(l.scanned for l in group)
         ratio = total_scanned / total_qty if total_qty else 0
-        if line.progress is not None:
-            line.progress.set(ratio)
-            line.progress.configure(progress_color=_color_from_ratio(ratio))
-        if line.rem_label is not None:
-            line.rem_label.configure(text=str(total_qty - total_scanned))
+        if line.progress is not None: # type: ignore[attr-defined]
+            line.progress.set(ratio) # type: ignore[attr-defined]
+            line.progress.configure(progress_color=_color_from_ratio(ratio)) # type: ignore[attr-defined]
+        if line.rem_label is not None: # type: ignore[attr-defined]
+            line.rem_label.configure(text=str(total_qty - total_scanned)) # type: ignore[attr-defined]
 
     def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int, color) -> None:
             
