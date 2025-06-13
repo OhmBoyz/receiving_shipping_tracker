@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 
 from src.logic import bo_report
 
@@ -52,7 +52,7 @@ class _Line:
         self.subinv_code = subinv_code if subinv_code is not None else subinv
         self.scanned = 0
         self.rem_label: Optional[ctk.CTkLabel] = None
-        self.progress = ctk.CTkProgressBar(master=None)
+        self.progress: Optional[ctk.CTkProgressBar] = None
 
     def remaining(self) -> int:
         return self.qty_total - self.scanned
@@ -291,33 +291,41 @@ class ShipperWindow(ctk.CTk):
         headers.pack(fill="x")
         for text, width in [
             ("Part", 200),
-            ("Subinv", 80),
-            ("Remaining", 80),
+            ("Total", 80),
             ("Progress", 300),
+            ("Remaining", 80),
         ]:
             ctk.CTkLabel(headers, text=text, width=width).pack(side="left")
 
-        for line in self.lines:
+        for part, lines in part_groups.items():
             row_frame = ctk.CTkFrame(self.lines_frame)
             row_frame.pack(fill="x", pady=1)
-            ctk.CTkLabel(row_frame, text=line.part, width=200, anchor="w").pack(side="left")
-            ctk.CTkLabel(row_frame, text=line.subinv, width=80).pack(side="left")
-            rem_label = ctk.CTkLabel(row_frame, width=80)
-            rem_label.pack(side="left")
+            ctk.CTkLabel(row_frame, text=part, width=200, anchor="w").pack(side="left")
+
+            total_qty = sum(l.qty_total for l in lines)
+            ctk.CTkLabel(row_frame, text=str(total_qty), width=80).pack(side="left")
+
             pb = ctk.CTkProgressBar(row_frame, width=300)
             pb.pack(side="left", padx=5)
-            line.progress = pb
-            line.rem_label = rem_label
-            self._update_line_widgets(line)
+            rem_label = ctk.CTkLabel(row_frame, width=80)
+            rem_label.pack(side="left")
+
+            for ln in lines:
+                ln.progress = pb
+                ln.rem_label = rem_label
+            self._update_line_widgets(lines[0])
 
         self.scan_entry.focus_set()
 
     def _update_line_widgets(self, line: _Line) -> None:
-        ratio = line.scanned / line.qty_total if line.qty_total else 0
+        group = [ln for ln in self.lines if ln.part == line.part]
+        total_qty = sum(l.qty_total for l in group)
+        total_scanned = sum(l.scanned for l in group)
+        ratio = total_scanned / total_qty if total_qty else 0
         line.progress.set(ratio)
         line.progress.configure(progress_color=_color_from_ratio(ratio))
         if line.rem_label is not None:
-            line.rem_label.configure(text=str(line.remaining()))
+            line.rem_label.configure(text=str(total_qty - total_scanned))
 
     def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int) -> None:
         label.configure(text=f"{label._base_text} +{qty}", fg_color="green")
@@ -392,9 +400,25 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
+
         remaining_qty = qty
         allocations: Dict[str, int] = {"AMO": 0, "KANBAN": 0}
+
         matching.sort(key=lambda l: 0 if "AMO" in l.subinv else 1)
+        total_remaining = sum(l.remaining() for l in matching)
+        while qty > total_remaining:
+            new_qty = simpledialog.askinteger(
+                "Over scan",
+                f"Only {total_remaining} remaining for {part}. Enter new quantity:",
+                parent=self,
+            )
+            if new_qty is None:
+                self.scan_var.set("")
+                self.qty_var.set(1)
+                return
+            qty = new_qty
+
+        remaining_qty = qty
         for line in matching:
             alloc = min(line.remaining(), remaining_qty)
             if alloc:
