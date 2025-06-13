@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS scan_sessions (
 CREATE TABLE IF NOT EXISTS scan_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
+    waybill_number TEXT NOT NULL DEFAULT '',
     part_number TEXT NOT NULL,
     scanned_qty INTEGER NOT NULL,
     timestamp TEXT NOT NULL,
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS scan_events (
 CREATE TABLE IF NOT EXISTS scan_summary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
+    waybill_number TEXT NOT NULL DEFAULT '',
     user_id INTEGER NOT NULL,
     part_number TEXT NOT NULL,
     total_scanned INTEGER,

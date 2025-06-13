@@ -174,9 +174,8 @@ class ShipperWindow(ctk.CTk):
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
-            "SELECT se.part_number, SUM(se.scanned_qty) FROM scan_events se "
-            "JOIN scan_sessions ss ON ss.session_id = se.session_id "
-            "WHERE ss.waybill_number = ? GROUP BY se.part_number",
+            "SELECT part_number, SUM(scanned_qty) FROM scan_events "
+            "WHERE waybill_number = ? GROUP BY part_number",
             (waybill,),
         )
         data = {row[0]: int(row[1]) for row in cur.fetchall()}
@@ -192,9 +191,7 @@ class ShipperWindow(ctk.CTk):
         )
         totals = {row[0]: int(row[1]) for row in cur.fetchall()}
         cur.execute(
-            "SELECT ss.waybill_number, SUM(se.scanned_qty)"
-            " FROM scan_events se JOIN scan_sessions ss ON ss.session_id = se.session_id"
-            " GROUP BY ss.waybill_number"
+            "SELECT waybill_number, SUM(scanned_qty) FROM scan_events GROUP BY waybill_number"
         )
         scanned = {row[0]: int(row[1]) for row in cur.fetchall()}
         conn.close()
@@ -248,9 +245,16 @@ class ShipperWindow(ctk.CTk):
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO scan_events (session_id, part_number, scanned_qty, timestamp, raw_scan) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (self.session_id, part, qty, timestamp, raw),
+            "INSERT INTO scan_events (session_id, waybill_number, part_number, scanned_qty, timestamp, raw_scan) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                self.session_id,
+                self.waybill_var.get(),
+                part,
+                qty,
+                timestamp,
+                raw,
+            ),
         )
         conn.commit()
         conn.close()
@@ -297,10 +301,11 @@ class ShipperWindow(ctk.CTk):
                 f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part
             )
             cur.execute(
-                "INSERT INTO scan_summary (session_id, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO scan_summary (session_id, waybill_number, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self.session_id,
+                    self.waybill_var.get(),
                     self.user_id,
                     part,
                     total,
