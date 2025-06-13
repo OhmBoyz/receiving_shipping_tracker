@@ -198,10 +198,8 @@ class DataManager:
         allocated_to: str,
         reception_date: str,
     ) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO scan_summary (session_id, waybill_number, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        self.insert_scan_summaries(
+            [
                 (
                     session_id,
                     waybill_number,
@@ -212,8 +210,22 @@ class DataManager:
                     remaining_qty,
                     allocated_to,
                     reception_date,
-                ),
-            )
+                )
+            ]
+        )
+
+    def insert_scan_summaries(self, rows: Iterable[tuple]) -> None:
+        """Insert multiple scan summary rows in a single transaction."""
+        rows = list(rows)
+        if not rows:
+            return
+        query = (
+            "INSERT INTO scan_summary (session_id, waybill_number, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.executemany(query, rows)
             conn.commit()
 
     def resolve_part(self, code: str) -> Tuple[str, int]:
