@@ -31,8 +31,8 @@ A program that a **shipper** can use to **scan incoming stock** and allocate it 
 - Mark palette as finished manually or auto-complete
 
 ## 4. PROJECT PHASES
-1. **Database structure** (status: not started)
-2. **App interface and scanning logic** (status: not started)
+1. **Database structure** (status: started)
+2. **App interface and scanning logic** (status: started)
 3. **BO integration and automation** (status: not started)
 
 ## 5. DATABASE STRUCTURE (UPDATED)
@@ -145,9 +145,4 @@ These tables together:
 - BO integration activates when the ADMIN uploads a BO Excel file
 
 ## 12. NEXT STEPS
-Let’s clarify step-by-step the following missing pieces:
-1. ✅ Authentication with login/password is required. User sessions must be tracked to associate actions with each user.
-2. ✅ Parts can be scanned multiple times as long as total does not exceed expected quantity. If exceeded, block scan and show visual/audio alert.
-3. ✅ Quantity defaults to 1. After each scan, it resets to 1. A numeric input option is preferred for flexibility, but the system must validate numeric input and block invalid values.
-4. ✅ When a part number appears on multiple lines (AMO + KANBAN), the system auto-allocates scans to AMO first, then KANBAN. The shipper does not need to choose.
-5. ✅ Scan summary should be saved in the DB (`scan_summary`) and exportable (e.g. CSV) at the end of each session. ADMIN can consult and re-export any session later.
+

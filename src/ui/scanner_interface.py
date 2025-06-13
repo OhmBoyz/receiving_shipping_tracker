@@ -388,21 +388,23 @@ class ShipperWindow(ctk.CTk):
         if line.rem_label is not None:
             line.rem_label.configure(text=str(total_qty - total_scanned))
 
-    def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int) -> None:
-        label.configure(text=f"{label._base_text} +{qty}", fg_color="green") # type: ignore[attr-defined]
+    def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int, color) -> None:
+            
+        label.configure(text=f"{label._base_text} +{qty}", fg_color=color)  # type: ignore[attr-defined]
+
         if getattr(label, "_after_id", None):
             self.after_cancel(label._after_id) # type: ignore[attr-defined]
 
         def reset() -> None:
             label.configure(text=label._base_text, fg_color=self._label_bg) # type: ignore[attr-defined]
 
-        label._after_id = self.after(800, reset)  # type: ignore[attr-defined]
+        label._after_id = self.after(1500, reset)  # type: ignore[attr-defined]
 
     def _update_alloc_labels(self, allocations: Dict[str, int]) -> None:
         if allocations.get("AMO"):
-            self._flash_alloc_label(self.amo_label, allocations["AMO"])
+            self._flash_alloc_label(self.amo_label, allocations["AMO"],"red")
         if allocations.get("KANBAN"):
-            self._flash_alloc_label(self.kanban_label, allocations["KANBAN"])
+            self._flash_alloc_label(self.kanban_label, allocations["KANBAN"],"green")
 
     def _load_csv_cache(self) -> None:
         """Load the part identifier CSV into ``self._csv_cache``."""
