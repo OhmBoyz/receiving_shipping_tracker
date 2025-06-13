@@ -101,10 +101,9 @@ def query_scan_summary(
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     query = (
-        "SELECT se.waybill_number, u.username, s.part_number, s.total_scanned, "
+        "SELECT s.waybill_number, u.username, s.part_number, s.total_scanned, "
         "s.expected_qty, s.remaining_qty, s.allocated_to, s.reception_date "
         "FROM scan_summary s "
-        "JOIN scan_sessions se ON se.session_id = s.session_id "
         "JOIN users u ON u.user_id = s.user_id WHERE 1=1"
     )
     params: list[object] = []
@@ -115,7 +114,7 @@ def query_scan_summary(
         query += " AND s.reception_date=?"
         params.append(date)
     if waybill:
-        query += " AND se.waybill_number=?"
+        query += " AND s.waybill_number=?"
         params.append(waybill)
     cur.execute(query, params)
     rows = cur.fetchall()
