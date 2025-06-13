@@ -32,9 +32,9 @@ def authenticate_user(
     return DataManager(db_path).authenticate_user(username, password)
 
 
-def create_session(user_id: int, db_path: str = DB_PATH) -> int:
+def create_session(user_id: int, db_path: str = DB_PATH, waybill: str = "") -> int:
     """Create a scan session using :class:`DataManager`."""
-    return DataManager(db_path).create_session(user_id)
+    return DataManager(db_path).create_session(user_id, waybill)
 
 
 def end_session(session_id: int, db_path: str = DB_PATH) -> None:
@@ -44,8 +44,8 @@ def end_session(session_id: int, db_path: str = DB_PATH) -> None:
 
 class LoginWindow(ctk.CTk):
     """
-    Simple login window returning the authenticated user session info.
-    The result tuple is (session_id, user_id, username, role).
+    Simple login window returning the authenticated user information.
+    The result tuple is (user_id, username, role).
     """
 
     def __init__(self, db_path: str = DB_PATH):
@@ -57,7 +57,7 @@ class LoginWindow(ctk.CTk):
 
         self.username_var = ctk.StringVar()
         self.password_var = ctk.StringVar()
-        self.result: Optional[Tuple[int, int, str, str]] = None
+        self.result: Optional[Tuple[int, str, str]] = None
 
         ctk.CTkLabel(self, text="Username:").pack(pady=(20, 5))
         self.username_entry = ctk.CTkEntry(self, textvariable=self.username_var)
@@ -87,14 +87,13 @@ class LoginWindow(ctk.CTk):
 
         logger.info("User %s authenticated", username)
 
-        session_id = create_session(user[0], self.db_path)
-        # store result: (session_id, user_id, username, role)
-        self.result = (session_id, user[0], user[1], user[2])
+        # store result: (user_id, username, role)
+        self.result = (user[0], user[1], user[2])
         self.destroy()
 
-def prompt_login(db_path: str = DB_PATH) -> Optional[Tuple[int, int, str, str]]:
+def prompt_login(db_path: str = DB_PATH) -> Optional[Tuple[int, str, str]]:
     """
-    Display the login window and return (session_id, user_id, username, role)
+    Display the login window and return (user_id, username, role)
     on success, otherwise None.
     """
 

@@ -53,7 +53,7 @@ class ShipperWindow(ctk.CTk):
         self.csv_path = csv_path
         self.logic = ScannerLogic(self.dm, csv_path)
         self.user_id = user_id
-        self.session_id = self._get_session()
+        self.session_id: Optional[int] = None
         self.bo_df: Optional[pd.DataFrame] = None
 
         self.title("Shipper Interface")
@@ -124,8 +124,8 @@ class ShipperWindow(ctk.CTk):
         self.refresh_progress_table()
 
     # DB helpers -----------------------------------------------------
-    def _get_session(self) -> int:
-        return self.dm.get_or_create_session(self.user_id)
+    def _get_session(self, waybill: str) -> int:
+        return self.dm.create_session(self.user_id, waybill)
 
     def _fetch_waybills(self) -> List[str]:
         return self.dm.fetch_waybills()
@@ -174,19 +174,22 @@ class ShipperWindow(ctk.CTk):
             messagebox.showerror("BO load error", str(exc))
 
     def _insert_event(self, part: str, qty: int, raw: str) -> None:
-        self.dm.insert_scan_event(
-            self.session_id,
-            self.waybill_var.get(),
-            part,
-            qty,
-            raw_scan=raw,
-        )
+        if self.session_id is not None:
+            self.dm.insert_scan_event(
+                self.session_id,
+                self.waybill_var.get(),
+                part,
+                qty,
+                raw_scan=raw,
+            )
 
     def _update_session_waybill(self, waybill: str) -> None:
-        self.dm.update_session_waybill(self.session_id, waybill)
+        if self.session_id is not None:
+            self.dm.update_session_waybill(self.session_id, waybill)
 
     def _finish_session(self) -> None:
-        self.dm.end_session(self.session_id)
+        if self.session_id is not None:
+            self.dm.end_session(self.session_id)
 
         self._record_summary()
         messagebox.showinfo("Waybill finished", "Scan summary saved")
@@ -207,6 +210,7 @@ class ShipperWindow(ctk.CTk):
             allocated = ", ".join(
                 f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part
             )
+
             rows.append(
                 (
                     self.session_id,
@@ -225,7 +229,10 @@ class ShipperWindow(ctk.CTk):
 
     # Interface logic ------------------------------------------------
     def load_waybill(self, waybill: str) -> None:
-        self._update_session_waybill(waybill)
+        if self.session_id is None:
+            self.session_id = self._get_session(waybill)
+        else:
+            self._update_session_waybill(waybill)
         scans = self._fetch_scans(waybill)
 
         for widget in self.lines_frame.winfo_children():
