@@ -201,6 +201,7 @@ class ShipperWindow(ctk.CTk):
 
     def _record_summary(self) -> None:
         scans = self._fetch_scans(self.waybill_var.get())
+        rows = []
         for part, total in scans.items():
             expected = sum(
                 line.qty_total for line in self.lines if line.part == part
@@ -209,8 +210,9 @@ class ShipperWindow(ctk.CTk):
             allocated = ", ".join(
                 f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part
             )
-            if self.session_id is not None:
-                self.dm.insert_scan_summary(
+
+            rows.append(
+                (
                     self.session_id,
                     self.waybill_var.get(),
                     self.user_id,
@@ -221,6 +223,9 @@ class ShipperWindow(ctk.CTk):
                     allocated,
                     datetime.utcnow().date().isoformat(),
                 )
+            )
+        if rows:
+            self.dm.insert_scan_summaries(rows)
 
     # Interface logic ------------------------------------------------
     def load_waybill(self, waybill: str) -> None:
