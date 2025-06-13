@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
+import platform
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -305,6 +306,19 @@ class ShipperWindow(ctk.CTk):
         if allocations.get("KANBAN"):
             self._flash_alloc_label(self.kanban_label, allocations["KANBAN"],"green")
 
+    def _alert_beep(self) -> None:
+        """Emit an audible alert if possible."""
+        try:
+            self.bell()
+        except Exception:
+            pass
+        if platform.system() == "Windows":
+            try:
+                import winsound
+                winsound.Beep(1000, 200)
+            except Exception:
+                pass
+
     def _update_last_entry(self, part: str, qty: int, allocations: Dict[str, int]) -> None:
         """Display the details of the most recent scan."""
         alloc_parts = []
@@ -323,6 +337,7 @@ class ShipperWindow(ctk.CTk):
         qty = self.qty_var.get()
         if qty <= 0:
             messagebox.showwarning("Invalid qty", "Quantity must be > 0")
+            self._alert_beep()
             return
         part, box_qty = self.logic.resolve_part(raw)
         if qty == 1:
@@ -336,6 +351,7 @@ class ShipperWindow(ctk.CTk):
         matching = [ln for ln in self.lines if ln.part == part]
         if not matching:
             messagebox.showwarning("Unknown part", f"{part} not on waybill")
+            self._alert_beep()
             self.scan_var.set("")
             self.qty_var.set(1)
             return
@@ -344,6 +360,7 @@ class ShipperWindow(ctk.CTk):
             allocations = self.logic.allocate(matching, qty)
         except ValueError:
             messagebox.showwarning("Over scan", "Quantity exceeds expected")
+            self._alert_beep()
             self.scan_var.set("")
             self.qty_var.set(1)
             return

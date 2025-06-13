@@ -60,6 +60,8 @@ def dummy_gui(monkeypatch):
             return 0
         def after_cancel(self, *a, **kw):
             pass
+        def bell(self, *a, **kw):
+            pass
 
     class DummyFont:
         def __init__(self, *a, **kw):
