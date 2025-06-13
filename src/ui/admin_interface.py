@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import csv
 import sqlite3
 from pathlib import Path
@@ -14,6 +16,8 @@ from src.logic import waybill_import
 
 from src.config import DB_PATH
 from src.data_manager import DataManager
+
+logger = logging.getLogger(__name__)
 
 #DB_PATH = "receiving_tracker.db"
 
@@ -125,8 +129,10 @@ class AdminWindow(ctk.CTk):
         try:
             inserted = import_waybill_file(path, self.db_path)
         except Exception as exc:  # noqa: BLE001
+            logger.exception("Waybill import failed: %s", path)
             messagebox.showerror("Import failed", str(exc))
             return
+        logger.info("Imported %s with %d lines", path, inserted)
         messagebox.showinfo(
             "Waybill imported", f"{inserted} lines inserted from {Path(path).name}"
         )
