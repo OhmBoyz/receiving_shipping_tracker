@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import csv
-from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
 
 import customtkinter as ctk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
 
 from src.logic import bo_report
 
 from src.config import DB_PATH
 from src.data_manager import DataManager
+from src.logic.scanning import Line, ScannerLogic
 
 #DB_PATH = "receiving_tracker.db"
 PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
@@ -35,27 +34,6 @@ SUBINV_MAP = {
 }
 
 
-class _Line:
-    def __init__(
-        self,
-        rowid: int,
-        part: str,
-        qty: int,
-        subinv: str,
-        subinv_code: str | None = None,
-    ) -> None:
-        self.rowid = rowid
-        self.part = part
-        self.qty_total = qty
-        self.subinv = subinv
-        # keep the original subinv code for potential DB updates
-        self.subinv_code = subinv_code if subinv_code is not None else subinv
-        self.scanned = 0
-        self.rem_label: Optional[ctk.CTkLabel] = None
-        self.progress: Optional[ctk.CTkProgressBar] = None
-
-    def remaining(self) -> int:
-        return self.qty_total - self.scanned
 
 class ShipperWindow(ctk.CTk):
     def __init__(
@@ -68,7 +46,7 @@ class ShipperWindow(ctk.CTk):
         self.db_path = db_path
         self.dm = DataManager(db_path)
         self.csv_path = csv_path
-        self._csv_cache: Dict[str, tuple[str, int]] | None = None
+        self.logic = ScannerLogic(self.dm, csv_path)
         self.user_id = user_id
         self.session_id = self._get_session()
         self.bo_df: Optional[pd.DataFrame] = None
@@ -135,7 +113,7 @@ class ShipperWindow(ctk.CTk):
         )
         finish_btn.pack(side="left", padx=(20, 0))
 
-        self.lines: List[_Line] = []
+        self.lines: List[Line] = []
         self.load_waybill(self.waybill_var.get())
 
         self.refresh_progress_table()
@@ -250,11 +228,11 @@ class ShipperWindow(ctk.CTk):
             code = row[3]
             #friendly = SUBINV_MAP.get(code, code)
             friendly: str = SUBINV_MAP.get(code) or code
-            line = _Line(row[0], row[1], int(row[2]), friendly, code)
+            line = Line(row[0], row[1], int(row[2]), friendly, code)
             self.lines.append(line)
 
         # allocate scanned qty across lines (AMO first)
-        part_groups: Dict[str, List[_Line]] = {}
+        part_groups: Dict[str, List[Line]] = {}
         for line in self.lines:
             part_groups.setdefault(line.part, []).append(line)
         for part, lines in part_groups.items():
@@ -298,7 +276,7 @@ class ShipperWindow(ctk.CTk):
 
         self.scan_entry.focus_set()
 
-    def _update_line_widgets(self, line: _Line) -> None:
+    def _update_line_widgets(self, line: Line) -> None:
         group = [ln for ln in self.lines if ln.part == line.part]
         total_qty = sum(l.qty_total for l in group)
         total_scanned = sum(l.scanned for l in group)
@@ -338,34 +316,6 @@ class ShipperWindow(ctk.CTk):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.last_entry_var.set(f"{timestamp} - {part} x{qty} -> {alloc_text}")
 
-    def _load_csv_cache(self) -> None:
-        """Load the part identifier CSV into ``self._csv_cache``."""
-        cache: Dict[str, tuple[str, int]] = {}
-        path = Path(self.csv_path)
-        if path.is_file():
-            with open(path, newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    part = (row.get("part_number") or "").strip()
-                    upc = (row.get("upc_code") or "").strip()
-                    qty = row.get("qty") or "1"
-                    try:
-                        qty_int = int(qty)
-                    except ValueError:
-                        qty_int = 1
-                    if upc:
-                        cache[upc] = (part, qty_int)
-        self._csv_cache = cache
-
-    def _resolve_part(self, code: str) -> tuple[str, int]:
-        code = code.strip()
-        part, qty = self.dm.resolve_part(code)
-        if part == code and qty == 1:
-            self._load_csv_cache()
-            assert self._csv_cache is not None
-            part, qty = self._csv_cache.get(code, (code, 1))
-        return part, qty
-
     def process_scan(self, event=None) -> None:
         raw = self.scan_var.get().strip()
         if not raw:
@@ -374,7 +324,7 @@ class ShipperWindow(ctk.CTk):
         if qty <= 0:
             messagebox.showwarning("Invalid qty", "Quantity must be > 0")
             return
-        part, box_qty = self._resolve_part(raw)
+        part, box_qty = self.logic.resolve_part(raw)
         if qty == 1:
             qty = box_qty
         if self.bo_df is not None:
@@ -390,41 +340,16 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
-
-        remaining_qty = qty
-        allocations: Dict[str, int] = {"AMO": 0, "KANBAN": 0}
-
-        matching.sort(key=lambda line: 0 if "AMO" in line.subinv else 1)
-        total_remaining = sum(l.remaining() for l in matching)
-        while qty > total_remaining:
-            new_qty = simpledialog.askinteger(
-                "Over scan",
-                f"Only {total_remaining} remaining for {part}. Enter new quantity:",
-                parent=self,
-            )
-            if new_qty is None:
-                self.scan_var.set("")
-                self.qty_var.set(1)
-                return
-            qty = new_qty
-
-        remaining_qty = qty
-        for line in matching:
-            alloc = min(line.remaining(), remaining_qty)
-            if alloc:
-                line.scanned += alloc
-                remaining_qty -= alloc
-                if "AMO" in line.subinv:
-                    allocations["AMO"] += alloc
-                elif "KANBAN" in line.subinv:
-                    allocations["KANBAN"] += alloc
-                self._update_line_widgets(line)
-            if remaining_qty == 0:
-                break
-
-        if remaining_qty > 0:
+        try:
+            allocations = self.logic.allocate(matching, qty)
+        except ValueError:
             messagebox.showwarning("Over scan", "Quantity exceeds expected")
+            self.scan_var.set("")
+            self.qty_var.set(1)
             return
+
+        for ln in matching:
+            self._update_line_widgets(ln)
 
         self._update_alloc_labels(allocations)
 
