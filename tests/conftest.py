@@ -42,6 +42,8 @@ def dummy_gui(monkeypatch):
             pass
         def destroy(self, *a, **kw):
             pass
+        def cget(self, *a, **kw):
+            return ""
         def winfo_children(self):
             return []
         def focus_set(self):
@@ -54,6 +56,14 @@ def dummy_gui(monkeypatch):
             pass
         def destroy(self, *a, **kw):
             pass
+        def after(self, *a, **kw):
+            return 0
+        def after_cancel(self, *a, **kw):
+            pass
+
+    class DummyFont:
+        def __init__(self, *a, **kw):
+            pass
 
     dummy.CTk = DummyCTk
     dummy.CTkLabel = DummyWidget
@@ -62,6 +72,7 @@ def dummy_gui(monkeypatch):
     dummy.CTkFrame = DummyWidget
     dummy.CTkProgressBar = DummyWidget
     dummy.CTkButton = DummyWidget
+    dummy.CTkFont = DummyFont
     dummy.IntVar = DummyVar
     dummy.StringVar = DummyVar
     dummy.set_appearance_mode = lambda *a, **kw: None

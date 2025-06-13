@@ -39,7 +39,7 @@ A program that a **shipper** can use to **scan incoming stock** and allocate it 
 
 ### Suggested Tables
 - **users**: user_id, username, password_hash, role
-- **part_identifiers**: part_number, upc_code, alt_code, description
+- **part_identifiers**: part_number, upc_code, qty, description
 - **waybill_lines**: id, waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date
 - **scan_sessions**: session_id, user_id, start_time, end_time, waybill_number
 - **scan_events**: id, session_id, part_number, scanned_qty, timestamp, raw_scan
