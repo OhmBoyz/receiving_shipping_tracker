@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import sqlite3
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -16,6 +15,7 @@ from tkinter import messagebox, simpledialog
 from src.logic import bo_report
 
 from src.config import DB_PATH
+from src.data_manager import DataManager
 
 #DB_PATH = "receiving_tracker.db"
 PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
@@ -66,6 +66,7 @@ class ShipperWindow(ctk.CTk):
     ):
         super().__init__()
         self.db_path = db_path
+        self.dm = DataManager(db_path)
         self.csv_path = csv_path
         self._csv_cache: Dict[str, tuple[str, int]] | None = None
         self.user_id = user_id
@@ -141,68 +142,17 @@ class ShipperWindow(ctk.CTk):
 
     # DB helpers -----------------------------------------------------
     def _get_session(self) -> int:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT session_id FROM scan_sessions "
-            "WHERE user_id=? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1",
-            (self.user_id,),
-        )
-        row = cur.fetchone()
-        if row:
-            session_id = int(row[0])
-        else:
-            start_time = datetime.utcnow().isoformat()
-            cur.execute(
-                "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?, ?, ?)",
-                (self.user_id, "", start_time),
-            )
-            session_id = cur.lastrowid or 0
-            conn.commit()
-        conn.close()
-        return session_id
+        return self.dm.get_or_create_session(self.user_id)
 
     def _fetch_waybills(self) -> List[str]:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
-        rows = [r[0] for r in cur.fetchall()]
-        conn.close()
-        return rows
+        return self.dm.fetch_waybills()
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT part_number, SUM(scanned_qty) FROM scan_events "
-            "WHERE waybill_number = ? GROUP BY part_number",
-            (waybill,),
-        )
-        data = {row[0]: int(row[1]) for row in cur.fetchall()}
-        conn.close()
-        return data
+        return self.dm.fetch_scans(waybill)
     
     def _get_waybill_progress(self) -> List[tuple[str, int, int]]:
         """Return [(waybill, total, remaining)] for all waybills."""
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT waybill_number, SUM(qty_total) FROM waybill_lines GROUP BY waybill_number"
-        )
-        totals = {row[0]: int(row[1]) for row in cur.fetchall()}
-        cur.execute(
-            "SELECT waybill_number, SUM(scanned_qty) FROM scan_events GROUP BY waybill_number"
-        )
-        scanned = {row[0]: int(row[1]) for row in cur.fetchall()}
-        conn.close()
-
-        progress = []
-        for wb, total in totals.items():
-            done = scanned.get(wb, 0)
-            remaining = max(total - done, 0)
-            progress.append((wb, total, remaining))
-        progress.sort()
-        return progress
+        return self.dm.get_waybill_progress()
 
     def refresh_progress_table(self) -> None:
         for widget in self.progress_frame.winfo_children():
@@ -241,44 +191,19 @@ class ShipperWindow(ctk.CTk):
             messagebox.showerror("BO load error", str(exc))
 
     def _insert_event(self, part: str, qty: int, raw: str) -> None:
-        timestamp = datetime.utcnow().isoformat()
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO scan_events (session_id, waybill_number, part_number, scanned_qty, timestamp, raw_scan) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                self.session_id,
-                self.waybill_var.get(),
-                part,
-                qty,
-                timestamp,
-                raw,
-            ),
+        self.dm.insert_scan_event(
+            self.session_id,
+            self.waybill_var.get(),
+            part,
+            qty,
+            raw_scan=raw,
         )
-        conn.commit()
-        conn.close()
 
     def _update_session_waybill(self, waybill: str) -> None:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE scan_sessions SET waybill_number=? WHERE session_id=?",
-            (waybill, self.session_id),
-        )
-        conn.commit()
-        conn.close()
+        self.dm.update_session_waybill(self.session_id, waybill)
 
     def _finish_session(self) -> None:
-        end_time = datetime.utcnow().isoformat()
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE scan_sessions SET end_time=? WHERE session_id=?",
-            (end_time, self.session_id),
-        )
-        conn.commit()
-        conn.close()
+        self.dm.end_session(self.session_id)
 
         self._record_summary()
         messagebox.showinfo("Waybill finished", "Scan summary saved")
@@ -290,8 +215,6 @@ class ShipperWindow(ctk.CTk):
 
     def _record_summary(self) -> None:
         scans = self._fetch_scans(self.waybill_var.get())
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
         for part, total in scans.items():
             expected = sum(
                 line.qty_total for line in self.lines if line.part == part
@@ -300,23 +223,17 @@ class ShipperWindow(ctk.CTk):
             allocated = ", ".join(
                 f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part
             )
-            cur.execute(
-                "INSERT INTO scan_summary (session_id, waybill_number, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    self.session_id,
-                    self.waybill_var.get(),
-                    self.user_id,
-                    part,
-                    total,
-                    expected,
-                    remaining,
-                    allocated,
-                    datetime.utcnow().date().isoformat(),
-                ),
+            self.dm.insert_scan_summary(
+                self.session_id,
+                self.waybill_var.get(),
+                self.user_id,
+                part,
+                total,
+                expected,
+                remaining,
+                allocated,
+                datetime.utcnow().date().isoformat(),
             )
-        conn.commit()
-        conn.close()
 
     # Interface logic ------------------------------------------------
     def load_waybill(self, waybill: str) -> None:
@@ -327,14 +244,7 @@ class ShipperWindow(ctk.CTk):
             widget.destroy()
         self.lines = []
 
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE waybill_number=? ORDER BY part_number",
-            (waybill,),
-        )
-        rows = cur.fetchall()
-        conn.close()
+        rows = self.dm.get_waybill_lines(waybill)
 
         for row in rows:
             code = row[3]
@@ -449,30 +359,11 @@ class ShipperWindow(ctk.CTk):
 
     def _resolve_part(self, code: str) -> tuple[str, int]:
         code = code.strip()
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                "SELECT part_number, qty FROM part_identifiers WHERE part_number=? OR upc_code=?",
-                (code, code),
-            )
-            row = cur.fetchone()
-        except sqlite3.OperationalError:
-            cur.execute(
-                "SELECT part_number FROM part_identifiers WHERE part_number=? OR upc_code=?",
-                (code, code),
-            )
-            result = cur.fetchone()
-            row = (result[0], 1) if result else None
-        conn.close()
-        if row:
-            part, qty = row[0], row[1]
-            qty = int(qty) if qty is not None else 1
-            return part, qty
-
-        self._load_csv_cache()
-        assert self._csv_cache is not None
-        part, qty = self._csv_cache.get(code, (code, 1))
+        part, qty = self.dm.resolve_part(code)
+        if part == code and qty == 1:
+            self._load_csv_cache()
+            assert self._csv_cache is not None
+            part, qty = self._csv_cache.get(code, (code, 1))
         return part, qty
 
     def process_scan(self, event=None) -> None:

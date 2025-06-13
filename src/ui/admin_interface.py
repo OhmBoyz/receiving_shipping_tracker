@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import sqlite3
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -14,6 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 from src.logic import waybill_import
 
 from src.config import DB_PATH
+from src.data_manager import DataManager
 
 #DB_PATH = "receiving_tracker.db"
 
@@ -29,12 +29,7 @@ def import_waybill_file(filepath: str, db_path: str = DB_PATH) -> int:
 
 def get_users(db_path: str = DB_PATH) -> List[tuple[int, str, str]]:
     """Return all users sorted by username."""
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, username, role FROM users ORDER BY username")
-    rows = [(int(r[0]), r[1], r[2]) for r in cur.fetchall()]
-    conn.close()
-    return rows
+    return DataManager(db_path).get_users()
 
 
 def create_user(
@@ -44,15 +39,7 @@ def create_user(
     db_path: str = DB_PATH,
 ) -> None:
     """Create a new user with ``username`` and ``role``."""
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-        (username, hashed, role),
-    )
-    conn.commit()
-    conn.close()
+    DataManager(db_path).create_user(username, password, role)
 
 
 def update_user(
@@ -63,32 +50,12 @@ def update_user(
     db_path: str = DB_PATH,
 ) -> None:
     """Update ``username``/``role`` and optionally ``password`` for ``user_id``."""
-    hashed = None
-    if password:
-        hashed = hashlib.sha256(password.encode()).hexdigest()
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    if hashed:
-        cur.execute(
-            "UPDATE users SET username=?, role=?, password_hash=? WHERE user_id=?",
-            (username, role, hashed, user_id),
-        )
-    else:
-        cur.execute(
-            "UPDATE users SET username=?, role=? WHERE user_id=?",
-            (username, role, user_id),
-        )
-    conn.commit()
-    conn.close()
+    DataManager(db_path).update_user(user_id, username, role, password)
 
 
 def delete_user(user_id: int, db_path: str = DB_PATH) -> None:
     """Delete user with ``user_id``."""
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
-    conn.commit()
-    conn.close()
+    DataManager(db_path).delete_user(user_id)
 
 
 def query_scan_summary(
@@ -98,28 +65,8 @@ def query_scan_summary(
     db_path: str = DB_PATH,
 ) -> List[tuple]:
     """Return scan summary rows filtered by ``user_id``, ``date`` and ``waybill``."""
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    query = (
-        "SELECT s.waybill_number, u.username, s.part_number, s.total_scanned, "
-        "s.expected_qty, s.remaining_qty, s.allocated_to, s.reception_date "
-        "FROM scan_summary s "
-        "JOIN users u ON u.user_id = s.user_id WHERE 1=1"
-    )
-    params: list[object] = []
-    if user_id is not None:
-        query += " AND s.user_id=?"
-        params.append(user_id)
-    if date:
-        query += " AND s.reception_date=?"
-        params.append(date)
-    if waybill:
-        query += " AND s.waybill_number=?"
-        params.append(waybill)
-    cur.execute(query, params)
-    rows = cur.fetchall()
-    conn.close()
-    return rows
+    dm = DataManager(db_path)
+    return dm.query_scan_summary(user_id, date, waybill)
 
 
 def export_summary_to_csv(rows: Iterable[tuple], filepath: str) -> None:

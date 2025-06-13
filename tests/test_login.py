@@ -1,19 +1,11 @@
 import sqlite3
-import hashlib
 
 from src.ui import login
+from src.data_manager import DataManager
 
 
 def add_user(db_path, username='test', password='pw', role='ADMIN'):
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-    cur.execute(
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-        (username, hashed, role),
-    )
-    conn.commit()
-    conn.close()
+    DataManager(db_path).create_user(username, password, role)
 
 
 def test_authenticate_and_session_flow(temp_db):
