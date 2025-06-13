@@ -8,3 +8,4 @@ receiving_tracker.db
 # Ignore misc scripts
 send_user.py
 reset_db.py
+man_entry_db.py

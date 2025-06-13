@@ -28,14 +28,18 @@ def authenticate_user(
 ) -> Optional[Tuple[int, str, str]]:
     """
     Validate username and password against the DB.
-    Returns a tuple (user_id, username, role) if credentials are correct, otherwise None.
+    Returns a tuple (user_id, username, role) if credentials are correct,
+    otherwise None.
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     hashed_pw = hashlib.sha256(password.encode()).hexdigest()
     cursor.execute(
-        "SELECT user_id, username, role FROM users WHERE username = ? AND password_hash = ?",
+        (
+            "SELECT user_id, username, role FROM users "
+            "WHERE username = ? AND password_hash = ?"
+        ),
         (username, hashed_pw),
     )
     result = cursor.fetchone()
@@ -52,7 +56,10 @@ def create_session(user_id: int, db_path: str = DB_PATH) -> int:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?, ?, ?)",
+        (
+            "INSERT INTO scan_sessions (user_id, waybill_number, start_time) "
+            "VALUES (?, ?, ?)"
+        ),
         (user_id, "", start_time),
     )
     session_id = cursor.lastrowid
@@ -126,8 +133,8 @@ class LoginWindow(ctk.CTk):
 
 def prompt_login(db_path: str = DB_PATH) -> Optional[Tuple[int, int, str, str]]:
     """
-    Display the login window and return (session_id, user_id, username, role) on success,
-    otherwise None.
+    Display the login window and return (session_id, user_id, username, role)
+    on success, otherwise None.
     """
 
     window = LoginWindow(db_path)

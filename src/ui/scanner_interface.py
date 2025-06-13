@@ -57,7 +57,6 @@ class _Line:
     def remaining(self) -> int:
         return self.qty_total - self.scanned
 
-
 class ShipperWindow(ctk.CTk):
     def __init__(
         self,
@@ -68,7 +67,8 @@ class ShipperWindow(ctk.CTk):
         super().__init__()
         self.db_path = db_path
         self.csv_path = csv_path
-        self._csv_cache: Dict[str, str] = {}#| None = None
+        #self._csv_cache: Dict[str, str] = {}#| None = None
+        self._csv_cache: Dict[str, str] | None = None
         self.user_id = user_id
         self.session_id = self._get_session()
         self.bo_df: Optional[pd.DataFrame] = None
@@ -89,6 +89,10 @@ class ShipperWindow(ctk.CTk):
 
         self.content_frame = ctk.CTkFrame(self)
         self.content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # table summarizing progress for all waybills
+        self.progress_frame = ctk.CTkFrame(self)
+        self.progress_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         self.lines_frame = ctk.CTkFrame(self.content_frame)
         self.lines_frame.pack(side="left", fill="both", expand=True)
@@ -127,6 +131,8 @@ class ShipperWindow(ctk.CTk):
 
         self.lines: List[_Line] = []
         self.load_waybill(self.waybill_var.get())
+
+        self.refresh_progress_table()
 
     # DB helpers -----------------------------------------------------
     def _get_session(self) -> int:
@@ -171,6 +177,57 @@ class ShipperWindow(ctk.CTk):
         data = {row[0]: int(row[1]) for row in cur.fetchall()}
         conn.close()
         return data
+    
+    def _get_waybill_progress(self) -> List[tuple[str, int, int]]:
+        """Return [(waybill, total, remaining)] for all waybills."""
+        conn = sqlite3.connect(self.db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT waybill_number, SUM(qty_total) FROM waybill_lines GROUP BY waybill_number"
+        )
+        totals = {row[0]: int(row[1]) for row in cur.fetchall()}
+        cur.execute(
+            "SELECT ss.waybill_number, SUM(se.scanned_qty)"
+            " FROM scan_events se JOIN scan_sessions ss ON ss.session_id = se.session_id"
+            " GROUP BY ss.waybill_number"
+        )
+        scanned = {row[0]: int(row[1]) for row in cur.fetchall()}
+        conn.close()
+
+        progress = []
+        for wb, total in totals.items():
+            done = scanned.get(wb, 0)
+            remaining = max(total - done, 0)
+            progress.append((wb, total, remaining))
+        progress.sort()
+        return progress
+
+    def refresh_progress_table(self) -> None:
+        for widget in self.progress_frame.winfo_children():
+            widget.destroy()
+
+        headers = ctk.CTkFrame(self.progress_frame)
+        headers.pack(fill="x")
+        for text, width in [
+            ("Waybill", 120),
+            ("Total", 80),
+            ("Remaining", 80),
+            ("Progress", 300),
+        ]:
+            ctk.CTkLabel(headers, text=text, width=width).pack(side="left")
+
+        rows = self._get_waybill_progress()
+        for waybill, total, remaining in rows:
+            frame = ctk.CTkFrame(self.progress_frame)
+            frame.pack(fill="x", pady=1)
+            ctk.CTkLabel(frame, text=waybill, width=120, anchor="w").pack(side="left")
+            ctk.CTkLabel(frame, text=str(total), width=80).pack(side="left")
+            ctk.CTkLabel(frame, text=str(remaining), width=80).pack(side="left")
+            pb = ctk.CTkProgressBar(frame, width=300)
+            pb.pack(side="left", padx=5)
+            ratio = (total - remaining) / total if total else 0
+            pb.set(ratio)
+            pb.configure(progress_color=_color_from_ratio(ratio))
 
     def load_bo_report(self, filepath: str) -> None:
         """Load the BO Excel file for later use."""
@@ -227,10 +284,12 @@ class ShipperWindow(ctk.CTk):
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         for part, total in scans.items():
-            expected = sum(l.qty_total for l in self.lines if l.part == part)
+            expected = sum(
+                line.qty_total for line in self.lines if line.part == part
+            )
             remaining = expected - total
             allocated = ", ".join(
-                f"{l.subinv}:{l.scanned}" for l in self.lines if l.part == part
+                f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part
             )
             cur.execute(
                 "INSERT INTO scan_summary (session_id, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
@@ -279,7 +338,7 @@ class ShipperWindow(ctk.CTk):
         for line in self.lines:
             part_groups.setdefault(line.part, []).append(line)
         for part, lines in part_groups.items():
-            lines.sort(key=lambda l: 0 if "AMO" in l.subinv else 1)
+            lines.sort(key=lambda line: 0 if "AMO" in line.subinv else 1)
             remaining = scans.get(part, 0)
             for ln in lines:
                 alloc = min(ln.qty_total, remaining)
@@ -315,6 +374,8 @@ class ShipperWindow(ctk.CTk):
                 ln.rem_label = rem_label
             self._update_line_widgets(lines[0])
 
+        self.refresh_progress_table()
+
         self.scan_entry.focus_set()
 
     def _update_line_widgets(self, line: _Line) -> None:
@@ -322,18 +383,19 @@ class ShipperWindow(ctk.CTk):
         total_qty = sum(l.qty_total for l in group)
         total_scanned = sum(l.scanned for l in group)
         ratio = total_scanned / total_qty if total_qty else 0
-        line.progress.set(ratio)
-        line.progress.configure(progress_color=_color_from_ratio(ratio))
+        if line.progress is not None:
+            line.progress.set(ratio)
+            line.progress.configure(progress_color=_color_from_ratio(ratio))
         if line.rem_label is not None:
             line.rem_label.configure(text=str(total_qty - total_scanned))
 
     def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int) -> None:
-        label.configure(text=f"{label._base_text} +{qty}", fg_color="green")
+        label.configure(text=f"{label._base_text} +{qty}", fg_color="green") # type: ignore[attr-defined]
         if getattr(label, "_after_id", None):
-            self.after_cancel(label._after_id)
+            self.after_cancel(label._after_id) # type: ignore[attr-defined]
 
         def reset() -> None:
-            label.configure(text=label._base_text, fg_color=self._label_bg)
+            label.configure(text=label._base_text, fg_color=self._label_bg) # type: ignore[attr-defined]
 
         label._after_id = self.after(800, reset)  # type: ignore[attr-defined]
 
@@ -345,10 +407,14 @@ class ShipperWindow(ctk.CTk):
 
     def _load_csv_cache(self) -> None:
         """Load the part identifier CSV into ``self._csv_cache``."""
+        """
         self._csv_cache = {}
         path = Path(self.csv_path)
         if not path.is_file():
-            return
+        """
+        if self._csv_cache is not None:
+                return
+        """
         with open(path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -359,6 +425,21 @@ class ShipperWindow(ctk.CTk):
                     self._csv_cache[upc] = part
                 if alt:
                     self._csv_cache[alt] = part
+        """
+        cache: Dict[str, str] = {}
+        path = Path(self.csv_path)
+        if path.is_file():
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    part = (row.get("part_number") or "").strip()
+                    upc = (row.get("upc_code") or "").strip()
+                    alt = (row.get("alt_code") or "").strip()
+                    if upc:
+                        cache[upc] = part
+                    if alt:
+                        cache[alt] = part
+            self._csv_cache = cache
 
     def _resolve_part(self, code: str) -> str:
         code = code.strip()
@@ -372,9 +453,12 @@ class ShipperWindow(ctk.CTk):
         conn.close()
         if row:
             return row[0]
-
+        """
         if self._csv_cache is None:
             self._load_csv_cache()
+        """
+        self._load_csv_cache()
+        
         assert self._csv_cache is not None
         return self._csv_cache.get(code, code)
 
@@ -404,7 +488,7 @@ class ShipperWindow(ctk.CTk):
         remaining_qty = qty
         allocations: Dict[str, int] = {"AMO": 0, "KANBAN": 0}
 
-        matching.sort(key=lambda l: 0 if "AMO" in l.subinv else 1)
+        matching.sort(key=lambda line: 0 if "AMO" in line.subinv else 1)
         total_remaining = sum(l.remaining() for l in matching)
         while qty > total_remaining:
             new_qty = simpledialog.askinteger(
@@ -443,10 +527,11 @@ class ShipperWindow(ctk.CTk):
             messagebox.showwarning("Invalid part", "Could not resolve scanned code")
             return
         self._insert_event(part, qty, raw)
+        self.refresh_progress_table()
         self.scan_var.set("")
         self.qty_var.set(1)
 
-        if all(l.remaining() == 0 for l in self.lines):
+        if all(line.remaining() == 0 for line in self.lines):
             self._finish_session()
 
     # end of class

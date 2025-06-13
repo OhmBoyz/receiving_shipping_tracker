@@ -1,6 +1,10 @@
 import sqlite3
 
-def initialize_database(db_path='receiving_tracker.db', schema_path='database/schema.sql'):
+#def initialize_database(db_path='receiving_tracker.db', schema_path='database/schema.sql'):
+def initialize_database(
+    db_path: str = "receiving_tracker.db",
+    schema_path: str = "database/schema.sql",
+) -> None:
     with open(schema_path, 'r') as schema_file:
         schema = schema_file.read()
 

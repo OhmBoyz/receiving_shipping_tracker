@@ -37,7 +37,12 @@ def get_users(db_path: str = DB_PATH) -> List[tuple[int, str, str]]:
     return rows
 
 
-def create_user(username: str, password: str, role: str, db_path: str = DB_PATH) -> None:
+def create_user(
+    username: str,
+    password: str,
+    role: str,
+    db_path: str = DB_PATH,
+) -> None:
     """Create a new user with ``username`` and ``role``."""
     hashed = hashlib.sha256(password.encode()).hexdigest()
     conn = sqlite3.connect(db_path)
@@ -210,9 +215,12 @@ class AdminWindow(ctk.CTk):
         )
 
         ctk.CTkLabel(form, text="Role:").grid(row=2, column=0, sticky="e")
-        ctk.CTkOptionMenu(form, variable=self.role_var, values=["ADMIN", "SHIPPER"]).grid(
-            row=2, column=1, padx=5, pady=5, sticky="w"
-        )
+        ctk.CTkOptionMenu(
+            form,
+            variable=self.role_var,
+            values=["ADMIN", "SHIPPER"],
+        ).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
 
         btn_frame = ctk.CTkFrame(form)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
