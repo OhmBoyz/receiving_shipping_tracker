@@ -52,6 +52,12 @@ def test_process_scan_allocation(temp_db, monkeypatch):
     assert qty == 6
     assert waybill == 'WB1'
 
+    cur = sqlite3.connect(temp_db).cursor()
+    cur.execute('SELECT waybill_number FROM scan_sessions')
+    session_waybill = cur.fetchone()[0]
+    cur.connection.close()
+    assert session_waybill == 'WB1'
+
 
 def test_waybill_switch_does_not_affect_previous_scans(temp_db, monkeypatch):
     setup_waybill(temp_db)
@@ -89,6 +95,12 @@ def test_waybill_switch_does_not_affect_previous_scans(temp_db, monkeypatch):
     remaining_dict = {wb: rem for wb, _, rem in progress}
     assert remaining_dict['WB1'] == 13
     assert remaining_dict['WB2'] == 2
+
+    cur = sqlite3.connect(temp_db).cursor()
+    cur.execute('SELECT waybill_number FROM scan_sessions WHERE session_id=?', (window.session_id,))
+    current_wb = cur.fetchone()[0]
+    cur.connection.close()
+    assert current_wb == 'WB2'
 
 
 def test_overscan_aborts_without_recording(temp_db, monkeypatch):

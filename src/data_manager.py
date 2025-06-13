@@ -26,14 +26,14 @@ class DataManager:
             )
             return cur.fetchone()  # type: ignore[return-value]
 
-    def create_session(self, user_id: int) -> int:
+    def create_session(self, user_id: int, waybill: str = "") -> int:
         """Create a new scan session and return its id."""
         start_time = datetime.utcnow().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
                 "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?, ?, ?)",
-                (user_id, "", start_time),
+                (user_id, waybill, start_time),
             )
             conn.commit()
             session_id = cur.lastrowid
