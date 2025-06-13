@@ -110,6 +110,12 @@ class ShipperWindow(ctk.CTk):
 
         self._label_bg = self.amo_label.cget("fg_color")
 
+        self.last_entry_var = ctk.StringVar(value="")
+        self.last_entry_label = ctk.CTkLabel(
+            self.alloc_frame, textvariable=self.last_entry_var, width=160
+        )
+        self.last_entry_label.pack(pady=(20, 5), fill="x")
+
         controls = ctk.CTkFrame(self)
         controls.pack(fill="x", pady=5)
 
@@ -406,6 +412,17 @@ class ShipperWindow(ctk.CTk):
         if allocations.get("KANBAN"):
             self._flash_alloc_label(self.kanban_label, allocations["KANBAN"],"green")
 
+    def _update_last_entry(self, part: str, qty: int, allocations: Dict[str, int]) -> None:
+        """Display the details of the most recent scan."""
+        alloc_parts = []
+        if allocations.get("AMO"):
+            alloc_parts.append(f"AMO {allocations['AMO']}")
+        if allocations.get("KANBAN"):
+            alloc_parts.append(f"KANBAN {allocations['KANBAN']}")
+        alloc_text = ", ".join(alloc_parts)
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.last_entry_var.set(f"{timestamp} - {part} x{qty} -> {alloc_text}")
+
     def _load_csv_cache(self) -> None:
         """Load the part identifier CSV into ``self._csv_cache``."""
         cache: Dict[str, tuple[str, int]] = {}
@@ -515,13 +532,23 @@ class ShipperWindow(ctk.CTk):
 
         self._update_alloc_labels(allocations)
 
+        self._update_last_entry(part, qty, allocations)
+
         self._insert_event(part, qty, raw)
         self.refresh_progress_table()
         self.scan_var.set("")
         self.qty_var.set(1)
 
         if all(line.remaining() == 0 for line in self.lines):
-            self._finish_session()
+            all_done = all(rem == 0 for _, _, rem in self._get_waybill_progress())
+            if all_done:
+                if messagebox.askyesno(
+                    "Waybills complete",
+                    "All waybills finished. Close interface?",
+                ):
+                    self._finish_session()
+            else:
+                messagebox.showinfo("Waybill finished", "Current waybill completed")
 
     # end of class
 
