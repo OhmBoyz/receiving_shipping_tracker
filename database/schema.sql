@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS part_identifiers (
     part_number TEXT PRIMARY KEY,
     upc_code TEXT UNIQUE,
-    alt_code TEXT,
+    qty TEXT,
     description TEXT
 );
 
