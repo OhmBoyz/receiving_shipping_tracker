@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -19,6 +21,8 @@ from src.logic.scanning import Line, ScannerLogic
 
 #DB_PATH = "receiving_tracker.db"
 PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
+
+logger = logging.getLogger(__name__)
 
 
 def _color_from_ratio(ratio: float) -> str:
@@ -359,6 +363,7 @@ class ShipperWindow(ctk.CTk):
         try:
             allocations = self.logic.allocate(matching, qty)
         except ValueError:
+            logger.warning("Over scan detected for part %s (qty=%s)", part, qty)
             messagebox.showwarning("Over scan", "Quantity exceeds expected")
             self._alert_beep()
             self.scan_var.set("")

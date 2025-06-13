@@ -9,6 +9,8 @@ new entry in the ``scan_sessions`` table.
 
 from __future__ import annotations
 
+import logging
+
 from typing import Optional, Tuple
 
 import customtkinter as ctk
@@ -16,6 +18,8 @@ from tkinter import messagebox
 
 from src.config import DB_PATH
 from src.data_manager import DataManager
+
+logger = logging.getLogger(__name__)
 
 #DB_PATH = "receiving_tracker.db"
 
@@ -77,8 +81,11 @@ class LoginWindow(ctk.CTk):
 
         user = authenticate_user(username, password, self.db_path)
         if user is None:
+            logger.warning("Login failed for user %s", username)
             messagebox.showerror("Login failed", "Invalid username or password")
             return
+
+        logger.info("User %s authenticated", username)
 
         session_id = create_session(user[0], self.db_path)
         # store result: (session_id, user_id, username, role)

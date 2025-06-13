@@ -22,3 +22,8 @@ receiving_shipping_tracker/
 │   └── ui/                # UI layer (ex: Streamlit)
 ├── .gitignore
 └── README.md
+
+### Logs
+
+Runtime logs are written to `tracker.log` in the project root. This file is
+created automatically when the application starts.
