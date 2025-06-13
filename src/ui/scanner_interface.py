@@ -13,7 +13,7 @@ import pandas as pd
 import customtkinter as ctk
 from tkinter import messagebox
 
-from logic import bo_report
+from src.logic import bo_report
 
 from src.config import DB_PATH
 

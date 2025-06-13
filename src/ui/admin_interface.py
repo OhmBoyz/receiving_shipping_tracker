@@ -11,7 +11,7 @@ from typing import Iterable, List, Optional
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 
-from logic import waybill_import
+from src.logic import waybill_import
 
 from src.config import DB_PATH
 

@@ -5,9 +5,9 @@ Provides login screen and routes user to the appropriate interface based on role
 This file serves as the program entry point.
 """
 
-from ui.admin_interface import start_admin_interface
-from ui.login import end_session, prompt_login
-from ui.scanner_interface import start_shipper_interface
+from src.ui.admin_interface import start_admin_interface
+from src.ui.login import end_session, prompt_login
+from src.ui.scanner_interface import start_shipper_interface
 
 
 def main() -> None:
