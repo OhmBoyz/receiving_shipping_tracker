@@ -9,79 +9,33 @@ new entry in the ``scan_sessions`` table.
 
 from __future__ import annotations
 
-import sqlite3
-import hashlib
-from datetime import datetime
 from typing import Optional, Tuple
 
 import customtkinter as ctk
 from tkinter import messagebox
 
 from src.config import DB_PATH
+from src.data_manager import DataManager
 
 #DB_PATH = "receiving_tracker.db"
 
 def authenticate_user(
     username: str,
     password: str,
-    db_path: str = DB_PATH
+    db_path: str = DB_PATH,
 ) -> Optional[Tuple[int, str, str]]:
-    """
-    Validate username and password against the DB.
-    Returns a tuple (user_id, username, role) if credentials are correct,
-    otherwise None.
-    """
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    hashed_pw = hashlib.sha256(password.encode()).hexdigest()
-    cursor.execute(
-        (
-            "SELECT user_id, username, role FROM users "
-            "WHERE username = ? AND password_hash = ?"
-        ),
-        (username, hashed_pw),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result  # type: ignore[return-value]
+    """Validate ``username``/``password`` using :class:`DataManager`."""
+    return DataManager(db_path).authenticate_user(username, password)
 
 
 def create_session(user_id: int, db_path: str = DB_PATH) -> int:
-    """
-    Create a new scan session for user_id and return the session id.
-    Always returns an int.
-    """
-    start_time = datetime.utcnow().isoformat()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        (
-            "INSERT INTO scan_sessions (user_id, waybill_number, start_time) "
-            "VALUES (?, ?, ?)"
-        ),
-        (user_id, "", start_time),
-    )
-    session_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-
-    # Pylance voit lastrowid comme int | None, on s'assure qu'il n'est pas None
-    assert session_id is not None, "Failed to create session"
-    return session_id
+    """Create a scan session using :class:`DataManager`."""
+    return DataManager(db_path).create_session(user_id)
 
 
 def end_session(session_id: int, db_path: str = DB_PATH) -> None:
-    """Mark ``session_id`` as finished by setting its ``end_time``."""
-    end_time = datetime.utcnow().isoformat()
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE scan_sessions SET end_time=? WHERE session_id=?",
-        (end_time, session_id),
-    )
-    conn.commit()
-    conn.close()
+    """Finish ``session_id`` using :class:`DataManager`."""
+    DataManager(db_path).end_session(session_id)
 
 
 class LoginWindow(ctk.CTk):
