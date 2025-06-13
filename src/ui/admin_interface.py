@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Admin interface for Receiving & Shipping Tracker."""
+
+from __future__ import annotations
 
 import csv
 import hashlib
