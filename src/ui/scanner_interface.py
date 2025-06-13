@@ -87,8 +87,25 @@ class ShipperWindow(ctk.CTk):
         menu = ctk.CTkOptionMenu(self, values=self.waybills, variable=self.waybill_var, command=self.load_waybill)
         menu.pack()
 
-        self.lines_frame = ctk.CTkFrame(self)
-        self.lines_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.content_frame = ctk.CTkFrame(self)
+        self.content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.lines_frame = ctk.CTkFrame(self.content_frame)
+        self.lines_frame.pack(side="left", fill="both", expand=True)
+
+        self.alloc_frame = ctk.CTkFrame(self.content_frame)
+        self.alloc_frame.pack(side="left", fill="y", padx=(10, 0))
+
+        font = ctk.CTkFont(size=28, weight="bold")
+        self.amo_label = ctk.CTkLabel(self.alloc_frame, text="AMO", width=160, height=60, font=font, fg_color="gray80", corner_radius=8)
+        self.amo_label.pack(pady=5, fill="x")
+        self.amo_label._base_text = "AMO"  # type: ignore[attr-defined]
+
+        self.kanban_label = ctk.CTkLabel(self.alloc_frame, text="KANBAN", width=160, height=60, font=font, fg_color="gray80", corner_radius=8)
+        self.kanban_label.pack(pady=5, fill="x")
+        self.kanban_label._base_text = "KANBAN"  # type: ignore[attr-defined]
+
+        self._label_bg = self.amo_label.cget("fg_color")
 
         controls = ctk.CTkFrame(self)
         controls.pack(fill="x", pady=5)
@@ -310,6 +327,22 @@ class ShipperWindow(ctk.CTk):
         if line.rem_label is not None:
             line.rem_label.configure(text=str(total_qty - total_scanned))
 
+    def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int) -> None:
+        label.configure(text=f"{label._base_text} +{qty}", fg_color="green")
+        if getattr(label, "_after_id", None):
+            self.after_cancel(label._after_id)
+
+        def reset() -> None:
+            label.configure(text=label._base_text, fg_color=self._label_bg)
+
+        label._after_id = self.after(800, reset)  # type: ignore[attr-defined]
+
+    def _update_alloc_labels(self, allocations: Dict[str, int]) -> None:
+        if allocations.get("AMO"):
+            self._flash_alloc_label(self.amo_label, allocations["AMO"])
+        if allocations.get("KANBAN"):
+            self._flash_alloc_label(self.kanban_label, allocations["KANBAN"])
+
     def _load_csv_cache(self) -> None:
         """Load the part identifier CSV into ``self._csv_cache``."""
         self._csv_cache = {}
@@ -367,6 +400,10 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
+
+        remaining_qty = qty
+        allocations: Dict[str, int] = {"AMO": 0, "KANBAN": 0}
+
         matching.sort(key=lambda l: 0 if "AMO" in l.subinv else 1)
         total_remaining = sum(l.remaining() for l in matching)
         while qty > total_remaining:
@@ -387,9 +424,19 @@ class ShipperWindow(ctk.CTk):
             if alloc:
                 line.scanned += alloc
                 remaining_qty -= alloc
+                if "AMO" in line.subinv:
+                    allocations["AMO"] += alloc
+                elif "KANBAN" in line.subinv:
+                    allocations["KANBAN"] += alloc
                 self._update_line_widgets(line)
             if remaining_qty == 0:
                 break
+
+        if remaining_qty > 0:
+            messagebox.showwarning("Over scan", "Quantity exceeds expected")
+            return
+
+        self._update_alloc_labels(allocations)
 
         part = self._resolve_part(raw)
         if part is None:
