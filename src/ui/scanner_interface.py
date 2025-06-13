@@ -67,8 +67,7 @@ class ShipperWindow(ctk.CTk):
         super().__init__()
         self.db_path = db_path
         self.csv_path = csv_path
-        #self._csv_cache: Dict[str, str] = {}#| None = None
-        self._csv_cache: Dict[str, str] | None = None
+        self._csv_cache: Dict[str, tuple[str, int]] | None = None
         self.user_id = user_id
         self.session_id = self._get_session()
         self.bo_df: Optional[pd.DataFrame] = None
@@ -407,26 +406,7 @@ class ShipperWindow(ctk.CTk):
 
     def _load_csv_cache(self) -> None:
         """Load the part identifier CSV into ``self._csv_cache``."""
-        """
-        self._csv_cache = {}
-        path = Path(self.csv_path)
-        if not path.is_file():
-        """
-        if self._csv_cache is not None:
-                return
-        """
-        with open(path, newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                part = (row.get("part_number") or "").strip()
-                upc = (row.get("upc_code") or "").strip()
-                alt = (row.get("alt_code") or "").strip()
-                if upc:
-                    self._csv_cache[upc] = part
-                if alt:
-                    self._csv_cache[alt] = part
-        """
-        cache: Dict[str, str] = {}
+        cache: Dict[str, tuple[str, int]] = {}
         path = Path(self.csv_path)
         if path.is_file():
             with open(path, newline="") as f:
@@ -434,33 +414,42 @@ class ShipperWindow(ctk.CTk):
                 for row in reader:
                     part = (row.get("part_number") or "").strip()
                     upc = (row.get("upc_code") or "").strip()
-                    alt = (row.get("alt_code") or "").strip()
+                    qty = row.get("qty") or "1"
+                    try:
+                        qty_int = int(qty)
+                    except ValueError:
+                        qty_int = 1
                     if upc:
-                        cache[upc] = part
-                    if alt:
-                        cache[alt] = part
-            self._csv_cache = cache
+                        cache[upc] = (part, qty_int)
+        self._csv_cache = cache
 
-    def _resolve_part(self, code: str) -> str:
+    def _resolve_part(self, code: str) -> tuple[str, int]:
         code = code.strip()
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
-        cur.execute(
-            "SELECT part_number FROM part_identifiers WHERE part_number=? OR upc_code=? OR alt_code=?",
-            (code, code, code),
-        )
-        row = cur.fetchone()
+        try:
+            cur.execute(
+                "SELECT part_number, qty FROM part_identifiers WHERE part_number=? OR upc_code=?",
+                (code, code),
+            )
+            row = cur.fetchone()
+        except sqlite3.OperationalError:
+            cur.execute(
+                "SELECT part_number FROM part_identifiers WHERE part_number=? OR upc_code=?",
+                (code, code),
+            )
+            result = cur.fetchone()
+            row = (result[0], 1) if result else None
         conn.close()
         if row:
-            return row[0]
-        """
-        if self._csv_cache is None:
-            self._load_csv_cache()
-        """
+            part, qty = row[0], row[1]
+            qty = int(qty) if qty is not None else 1
+            return part, qty
+
         self._load_csv_cache()
-        
         assert self._csv_cache is not None
-        return self._csv_cache.get(code, code)
+        part, qty = self._csv_cache.get(code, (code, 1))
+        return part, qty
 
     def process_scan(self, event=None) -> None:
         raw = self.scan_var.get().strip()
@@ -470,7 +459,9 @@ class ShipperWindow(ctk.CTk):
         if qty <= 0:
             messagebox.showwarning("Invalid qty", "Quantity must be > 0")
             return
-        part = self._resolve_part(raw)
+        part, box_qty = self._resolve_part(raw)
+        if qty == 1:
+            qty = box_qty
         if self.bo_df is not None:
             try:
                 bo_report.find_bo_match(part, self.bo_df)
@@ -522,10 +513,6 @@ class ShipperWindow(ctk.CTk):
 
         self._update_alloc_labels(allocations)
 
-        part = self._resolve_part(raw)
-        if part is None:
-            messagebox.showwarning("Invalid part", "Could not resolve scanned code")
-            return
         self._insert_event(part, qty, raw)
         self.refresh_progress_table()
         self.scan_var.set("")
