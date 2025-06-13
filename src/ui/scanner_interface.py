@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 
 from src.logic import bo_report
 
@@ -359,8 +359,21 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
-        remaining_qty = qty
         matching.sort(key=lambda l: 0 if "AMO" in l.subinv else 1)
+        total_remaining = sum(l.remaining() for l in matching)
+        while qty > total_remaining:
+            new_qty = simpledialog.askinteger(
+                "Over scan",
+                f"Only {total_remaining} remaining for {part}. Enter new quantity:",
+                parent=self,
+            )
+            if new_qty is None:
+                self.scan_var.set("")
+                self.qty_var.set(1)
+                return
+            qty = new_qty
+
+        remaining_qty = qty
         for line in matching:
             alloc = min(line.remaining(), remaining_qty)
             if alloc:
@@ -369,10 +382,6 @@ class ShipperWindow(ctk.CTk):
                 self._update_line_widgets(line)
             if remaining_qty == 0:
                 break
-
-        if remaining_qty > 0:
-            messagebox.showwarning("Over scan", "Quantity exceeds expected")
-            return
 
         part = self._resolve_part(raw)
         if part is None:
