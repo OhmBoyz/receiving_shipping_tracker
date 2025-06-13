@@ -1,4 +1,5 @@
 import sqlite3
+import types
 
 import pytest
 
@@ -88,3 +89,43 @@ def test_waybill_switch_does_not_affect_previous_scans(temp_db, monkeypatch):
     remaining_dict = {wb: rem for wb, _, rem in progress}
     assert remaining_dict['WB1'] == 13
     assert remaining_dict['WB2'] == 2
+
+
+def test_overscan_aborts_without_recording(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+    monkeypatch.setattr(
+        scanner_interface,
+        'messagebox',
+        types.SimpleNamespace(
+            showinfo=lambda *a, **kw: None,
+            showwarning=lambda *a, **kw: None,
+            showerror=lambda *a, **kw: None,
+        ),
+    )
+    alerted = {'called': False}
+
+    def fake_beep(self):
+        alerted['called'] = True
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_alert_beep', fake_beep)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    window.qty_var.set(20)
+    window.scan_var.set('P1')
+    window.process_scan()
+
+    for line in window.lines:
+        assert line.scanned == 0
+
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM scan_events')
+    count = cur.fetchone()[0]
+    conn.close()
+    assert count == 0
+    assert alerted['called'] is True
