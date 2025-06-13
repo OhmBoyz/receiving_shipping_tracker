@@ -13,20 +13,21 @@ from src.ui.scanner_interface import start_shipper_interface
 def main() -> None:
     """Prompt for login and launch the appropriate interface."""
 
-    login_info = prompt_login()
-    if login_info is None:
-        print("Login cancelled")
-        return
+    while True:
+        login_info = prompt_login()
+        if login_info is None:
+            print("Login cancelled")
+            break
 
-    session_id, user_id, _username, role = login_info
+        session_id, user_id, _username, role = login_info
 
-    try:
-        if role.upper() == "ADMIN":
-            start_admin_interface()
-        else:
-            start_shipper_interface(user_id)
-    finally:
-        end_session(session_id)
+        try:
+            if role.upper() == "ADMIN":
+                start_admin_interface()
+            else:
+                start_shipper_interface(user_id)
+        finally:
+            end_session(session_id)
 
 
 if __name__ == "__main__":
