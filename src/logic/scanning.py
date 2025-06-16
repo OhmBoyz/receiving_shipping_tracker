@@ -16,8 +16,8 @@ def _load_csv_cache(csv_path: str) -> Dict[str, Tuple[str, int]]:
         with open(path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                part = (row.get("part_number") or "").strip()
-                upc = (row.get("upc_code") or "").strip()
+                part = (row.get("part_number") or "").strip().upper()
+                upc = (row.get("upc_code") or "").strip().upper()
                 qty_str = row.get("qty") or "1"
                 try:
                     qty = int(qty_str)
@@ -52,7 +52,7 @@ class ScannerLogic:
     # ------------------------------------------------------------------
     def resolve_part(self, code: str) -> Tuple[str, int]:
         """Return the part number and box quantity for ``code``."""
-        code = code.strip()
+        code = code.strip().upper()
         part, qty = self.dm.resolve_part(code)
         if part == code and qty == 1:
             if self._csv_cache is None:

@@ -31,6 +31,20 @@ def test_resolve_part_upc(temp_db):
     assert (part, qty) == ('P1', 5)
 
 
+def test_resolve_part_case_insensitive(temp_db):
+    setup_identifiers(temp_db)
+    dm = DataManager(temp_db)
+    part, qty = dm.resolve_part('p1')
+    assert (part, qty) == ('P1', 5)
+
+
+def test_resolve_part_upc_case_insensitive(temp_db):
+    setup_identifiers(temp_db)
+    dm = DataManager(temp_db)
+    part, qty = dm.resolve_part('upc1')
+    assert (part, qty) == ('P1', 5)
+
+
 def test_resolve_part_missing(temp_db):
     setup_identifiers(temp_db)
     dm = DataManager(temp_db)

@@ -132,7 +132,7 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT part_number, SUM(scanned_qty) FROM scan_events WHERE waybill_number=? GROUP BY part_number",
+                "SELECT part_number, SUM(scanned_qty) FROM scan_events WHERE UPPER(waybill_number)=UPPER(?) GROUP BY part_number",
                 (waybill,),
             )
             data = {row[0]: int(row[1]) for row in cur.fetchall()}
@@ -161,7 +161,7 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE waybill_number=? ORDER BY part_number",
+                "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) ORDER BY part_number",
                 (waybill,),
             )
             rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
@@ -229,24 +229,24 @@ class DataManager:
             conn.commit()
 
     def resolve_part(self, code: str) -> Tuple[str, int]:
-        code = code.strip()
+        code = code.strip().upper()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    "SELECT part_number, qty FROM part_identifiers WHERE part_number=? OR upc_code=?",
+                    "SELECT part_number, qty FROM part_identifiers WHERE UPPER(part_number)=? OR UPPER(upc_code)=?",
                     (code, code),
                 )
                 row = cur.fetchone()
             except sqlite3.OperationalError:
                 cur.execute(
-                    "SELECT part_number FROM part_identifiers WHERE part_number=? OR upc_code=?",
+                    "SELECT part_number FROM part_identifiers WHERE UPPER(part_number)=? OR UPPER(upc_code)=?",
                     (code, code),
                 )
                 result = cur.fetchone()
                 row = (result[0], 1) if result else None
         if row:
-            part, qty = row[0], row[1]
+            part, qty = row[0].upper(), row[1]
             qty = int(qty) if qty is not None else 1
             return part, qty
         # not found in DB
@@ -297,7 +297,7 @@ class DataManager:
                 query += " AND s.reception_date=?"
                 params.append(date)
             if waybill:
-                query += " AND s.waybill_number=?"
+                query += " AND UPPER(s.waybill_number)=UPPER(?)"
                 params.append(waybill)
             cur.execute(query, params)
             rows = cur.fetchall()

@@ -59,6 +59,23 @@ def test_process_scan_allocation(temp_db, monkeypatch):
     assert session_waybill == 'WB1'
 
 
+def test_process_scan_lowercase_code(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    window.qty_var.set(1)
+    window.scan_var.set('p1')
+    window.process_scan()
+
+    total_scanned = sum(l.scanned for l in window.lines)
+    assert total_scanned == 1
+
+
 def test_waybill_switch_does_not_affect_previous_scans(temp_db, monkeypatch):
     setup_waybill(temp_db)
 
