@@ -54,6 +54,7 @@ class ShipperWindow(ctk.CTk):
         self.logic = ScannerLogic(self.dm, csv_path)
         self.user_id = user_id
         self.session_id: Optional[int] = None
+        self._summary_recorded: bool = False
         self.bo_df: Optional[pd.DataFrame] = None
 
         self.title("Shipper Interface")
@@ -199,10 +200,7 @@ class ShipperWindow(ctk.CTk):
             self.dm.update_session_waybill(self.session_id, waybill)
 
     def _finish_session(self) -> None:
-        if self.session_id is not None:
-            self.dm.end_session(self.session_id)
-
-        self._record_summary()
+        self.record_partial_summary()
         messagebox.showinfo("Waybill finished", "Scan summary saved")
         self.destroy()
 
@@ -241,6 +239,15 @@ class ShipperWindow(ctk.CTk):
             )
         if rows:
             self.dm.insert_scan_summaries(rows)
+
+    def record_partial_summary(self) -> None:
+        """Write a summary row and close the session if not already done."""
+        if self.session_id is None or self._summary_recorded:
+            return
+        self._record_summary()
+        self.dm.end_session(self.session_id)
+        self.session_id = None
+        self._summary_recorded = True
 
     # Interface logic ------------------------------------------------
     def load_waybill(self, waybill: str) -> None:
@@ -430,4 +437,8 @@ def start_shipper_interface(
 ) -> None:
     """Launch the shipper interface for ``user_id``."""
     app = ShipperWindow(user_id, db_path, csv_path)
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        if getattr(app, "session_id", None):
+            app.record_partial_summary()
