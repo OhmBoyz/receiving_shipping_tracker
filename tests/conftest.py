@@ -62,6 +62,8 @@ def dummy_gui(monkeypatch):
             pass
         def bell(self, *a, **kw):
             pass
+        def protocol(self, *a, **kw):
+            pass
 
     class DummyFont:
         def __init__(self, *a, **kw):
@@ -87,5 +89,10 @@ def dummy_gui(monkeypatch):
         showerror=lambda *a, **kw: None,
     )
     monkeypatch.setitem(sys.modules, 'tkinter.messagebox', mb)
+    try:
+        import tkinter
+        monkeypatch.setattr(tkinter, 'messagebox', mb, raising=False)
+    except Exception:
+        pass
     yield
 

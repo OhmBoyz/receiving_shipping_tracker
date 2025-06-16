@@ -118,10 +118,21 @@ class ShipperWindow(ctk.CTk):
         )
         finish_btn.pack(side="left", padx=(20, 0))
 
+        logout_btn = ctk.CTkButton(
+            controls, text="End Session", command=self.manual_logout
+        )
+        logout_btn.pack(side="left", padx=(20, 0))
+
         self.lines: List[Line] = []
         self.load_waybill(self.waybill_var.get())
 
         self.refresh_progress_table()
+
+        # handle window close the same as logout
+        try:
+            self.protocol("WM_DELETE_WINDOW", self.manual_logout)
+        except Exception:
+            pass
 
     # DB helpers -----------------------------------------------------
     def _get_session(self, waybill: str) -> int:
@@ -197,6 +208,10 @@ class ShipperWindow(ctk.CTk):
 
     def manual_finish(self) -> None:
         if messagebox.askyesno("Confirm", "Finish current waybill?"):
+            self._finish_session()
+
+    def manual_logout(self) -> None:
+        if messagebox.askyesno("Confirm", "End scanning session and exit?"):
             self._finish_session()
 
     def _record_summary(self) -> None:

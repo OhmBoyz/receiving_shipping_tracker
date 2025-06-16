@@ -141,3 +141,42 @@ def test_overscan_aborts_without_recording(temp_db, monkeypatch):
     conn.close()
     assert count == 0
     assert alerted['called'] is True
+
+
+def test_manual_logout_ends_session(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(
+        scanner_interface.messagebox,
+        'askyesno',
+        lambda *a, **kw: True,
+        raising=False,
+    )
+
+    called = {'flag': False}
+
+    orig = scanner_interface.ShipperWindow._finish_session
+
+    def spy(self):
+        called['flag'] = True
+        orig(self)
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', spy)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    session_id = window.session_id
+    assert session_id is not None
+
+    window.manual_logout()
+
+    assert called['flag'] is True
+
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    cur.execute('SELECT end_time FROM scan_sessions WHERE session_id=?', (session_id,))
+    end_time = cur.fetchone()[0]
+    conn.close()
+    assert end_time is not None
