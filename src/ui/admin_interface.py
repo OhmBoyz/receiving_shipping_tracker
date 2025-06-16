@@ -14,7 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from src.logic import waybill_import, part_identifier_import
 
-from src.config import DB_PATH
+from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ class AdminWindow(ctk.CTk):
         self.db_path = db_path
         self.title("Admin Interface")
         self.geometry("900x600")
-        ctk.set_appearance_mode("light")
+        ctk.set_appearance_mode(APPEARANCE_MODE)
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=10, pady=10)
