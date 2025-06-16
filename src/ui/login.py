@@ -52,7 +52,7 @@ class LoginWindow(ctk.CTk):
         super().__init__()
         self.db_path = db_path
         self.title("Receiving & Shipping Tracker - Login")
-        self.geometry("300x200")
+        self.geometry("300x250")
         ctk.set_appearance_mode("light")
 
         self.username_var = ctk.StringVar()

@@ -6,7 +6,10 @@ A barcode-based inventory receiving application for AMO/KANBAN operations.
 
 ### 1. Install Python 3.x
 
-### 2. Create the database
+## To set up the environment
+pip install -r requirements.txt
+
+### 2. To create the database if not existing
 
 ```bash
 python database/init_db.py
