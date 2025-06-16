@@ -53,3 +53,10 @@ Administrators can load these mappings from a CSV file:
    - `upc_code`
    - `qty`
    - `description`
+
+## Database Viewer
+
+The **Admin** window now includes a *Database Viewer* tab. It lists all tables
+in the SQLite database and lets you inspect and edit their contents. Selecting a
+table shows its rows with **Edit** and **Delete** actions. Edits and deletions
+are wrapped in a transaction so you can cancel changes before committing.

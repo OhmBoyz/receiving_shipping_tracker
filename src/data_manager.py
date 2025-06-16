@@ -88,6 +88,60 @@ class DataManager:
             rows = [(int(r[0]), r[1], r[2]) for r in cur.fetchall()]
         return rows
 
+    # --- Generic helpers for admin DB viewer ----------------------------
+    def fetch_table_names(self) -> List[str]:
+        """Return a sorted list of user table names."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+            return [r[0] for r in cur.fetchall()]
+
+    def fetch_rows(self, table: str) -> Tuple[List[str], List[tuple]]:
+        """Return column names and all rows from ``table`` including rowid."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(f"PRAGMA table_info({table})")
+            cols = [row[1] for row in cur.fetchall()]
+            cur.execute(f"SELECT rowid, * FROM {table}")
+            rows = cur.fetchall()
+        return ["rowid", *cols], rows
+
+    def update_row(
+        self,
+        table: str,
+        pk: int,
+        data: Dict[str, object],
+        conn: Optional[sqlite3.Connection] = None,
+    ) -> None:
+        """Update ``table`` row identified by ``pk`` using ``data``."""
+        close = False
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
+            close = True
+        cur = conn.cursor()
+        columns = ", ".join(f"{col}=?" for col in data.keys())
+        params = list(data.values()) + [pk]
+        cur.execute(f"UPDATE {table} SET {columns} WHERE rowid=?", params)
+        if close:
+            conn.commit()
+            conn.close()
+
+    def delete_row(
+        self, table: str, pk: int, conn: Optional[sqlite3.Connection] = None
+    ) -> None:
+        """Delete row ``pk`` from ``table``."""
+        close = False
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
+            close = True
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM {table} WHERE rowid=?", (pk,))
+        if close:
+            conn.commit()
+            conn.close()
+
     def create_user(self, username: str, password: str, role: str) -> None:
         hashed = hashlib.sha256(password.encode()).hexdigest()
         with sqlite3.connect(self.db_path) as conn:
