@@ -16,6 +16,7 @@ def _load_csv(filepath: str | Path) -> list[dict[str, str]]:
     with path.open(newline="") as f:
         sample = f.read(2048)
         dialect = csv.Sniffer().sniff(sample, delimiters=";,")
+        f.seek(0)
         reader = csv.DictReader(f,dialect=dialect)
         missing = [c for c in REQUIRED_COLUMNS if c not in reader.fieldnames]
         if missing:

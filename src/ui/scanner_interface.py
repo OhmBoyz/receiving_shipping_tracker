@@ -268,7 +268,7 @@ class ShipperWindow(ctk.CTk):
             code = row[3]
             #friendly = SUBINV_MAP.get(code, code)
             friendly: str = SUBINV_MAP.get(code) or code
-            line = Line(row[0], row[1], int(row[2]), friendly, code)
+            line = Line(row[0], row[1].upper(), int(row[2]), friendly, code)
             self.lines.append(line)
 
         # allocate scanned qty across lines (AMO first)
@@ -379,6 +379,7 @@ class ShipperWindow(ctk.CTk):
             self._alert_beep()
             return
         part, box_qty = self.logic.resolve_part(raw)
+        part = part.upper()
         if qty == 1:
             qty = box_qty
         if self.bo_df is not None:
