@@ -5,9 +5,13 @@ Provides login screen and routes user to the appropriate interface based on role
 This file serves as the program entry point.
 """
 
+import logging
+
 from src.ui.admin_interface import start_admin_interface
 from src.ui.login import prompt_login
 from src.ui.scanner_interface import start_shipper_interface
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -16,7 +20,7 @@ def main() -> None:
     while True:
         login_info = prompt_login()
         if login_info is None:
-            print("Login cancelled")
+            logger.info("Login cancelled")
             break
 
         user_id, _username, role = login_info
