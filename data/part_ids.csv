@@ -1,0 +1,4 @@
+part_number,upc_code,qty,description
+P1,UPC1,5,Widget One
+P2,UPC2,1,Widget Two
+P3,,2,Widget Three
