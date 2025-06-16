@@ -29,7 +29,9 @@ receiving_shipping_tracker/
 ### Logs
 
 Runtime logs are written to `tracker.log` in the project root. This file is
-created automatically when the application starts.
+created automatically when the application starts. The log level can be
+customized with the `TRACKER_LOG_LEVEL` environment variable. Set it to `DEBUG`
+to enable verbose output during troubleshooting.
 
 
 ## Workflow
