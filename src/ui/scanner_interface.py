@@ -15,7 +15,7 @@ from tkinter import messagebox
 
 from src.logic import bo_report
 
-from src.config import DB_PATH
+from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 from src.logic.scanning import Line, ScannerLogic
 
@@ -59,6 +59,7 @@ class ShipperWindow(ctk.CTk):
 
         self.title("Shipper Interface")
         self.geometry("900x600")
+        ctk.set_appearance_mode(APPEARANCE_MODE)
 
         self.waybills = self._fetch_waybills()
         if not self.waybills:

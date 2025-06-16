@@ -16,7 +16,7 @@ from typing import Optional, Tuple
 import customtkinter as ctk
 from tkinter import messagebox
 
-from src.config import DB_PATH
+from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class LoginWindow(ctk.CTk):
         self.db_path = db_path
         self.title("Receiving & Shipping Tracker - Login")
         self.geometry("300x250")
-        ctk.set_appearance_mode("light")
+        ctk.set_appearance_mode(APPEARANCE_MODE)
 
         self.username_var = ctk.StringVar()
         self.password_var = ctk.StringVar()
