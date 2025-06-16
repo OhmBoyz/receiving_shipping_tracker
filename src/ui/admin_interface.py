@@ -113,10 +113,12 @@ class AdminWindow(ctk.CTk):
         self.tab_upload = tabs.add("Waybill Upload")
         self.tab_users = tabs.add("User Management")
         self.tab_summary = tabs.add("Scan Summaries")
+        self.tab_db = tabs.add("Database Viewer")
 
         self._build_upload_tab()
         self._build_user_tab()
         self._build_summary_tab()
+        self._build_db_tab()
 
     # ---------------------------- Waybill Upload ----------------------------
     def _build_upload_tab(self) -> None:
@@ -354,6 +356,105 @@ class AdminWindow(ctk.CTk):
             return
         export_summary_to_csv(self.summary_rows, path)
         messagebox.showinfo("Exported", f"Summary exported to {Path(path).name}")
+
+    # --------------------------- Database Viewer ---------------------------
+    def _build_db_tab(self) -> None:
+        self.dm = DataManager(self.db_path)
+        self.table_list = ctk.CTkFrame(self.tab_db)
+        self.table_list.pack(side="left", fill="y", padx=10, pady=10)
+        self.table_buttons: List[ctk.CTkButton] = []
+        self.table_frame = ctk.CTkFrame(self.tab_db)
+        self.table_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        self.table_scroll = ctk.CTkScrollableFrame(self.table_frame)
+        self.table_scroll.pack(fill="both", expand=True)
+
+        self._refresh_table_list()
+
+    def _refresh_table_list(self) -> None:
+        for widget in self.table_list.winfo_children():
+            widget.destroy()
+        tables = self.dm.fetch_table_names()
+        for name in tables:
+            btn = ctk.CTkButton(
+                self.table_list,
+                text=name,
+                width=160,
+                command=lambda n=name: self._load_table(n),
+            )
+            btn.pack(fill="x", pady=2)
+            self.table_buttons.append(btn)
+
+    def _load_table(self, name: str) -> None:
+        self.current_table = name
+        for widget in self.table_scroll.winfo_children():
+            widget.destroy()
+        cols, rows = self.dm.fetch_rows(name)
+        header = ctk.CTkFrame(self.table_scroll)
+        header.pack(fill="x")
+        for col in cols:
+            ctk.CTkLabel(header, text=col, width=120).pack(side="left")
+        ctk.CTkLabel(header, text="Actions", width=160).pack(side="left")
+
+        for row in rows:
+            frame = ctk.CTkFrame(self.table_scroll)
+            frame.pack(fill="x", pady=1)
+            for val in row:
+                ctk.CTkLabel(frame, text=str(val), width=120, anchor="w").pack(side="left")
+            pk = row[0]
+            edit_btn = ctk.CTkButton(frame, text="Edit", width=70, command=lambda p=pk: self._edit_row(p))
+            edit_btn.pack(side="left", padx=2)
+            del_btn = ctk.CTkButton(frame, text="Delete", width=70, command=lambda p=pk: self._delete_row(p))
+            del_btn.pack(side="left", padx=2)
+
+    def _edit_row(self, pk: int) -> None:
+        cols, rows = self.dm.fetch_rows(self.current_table)
+        row_data = next((r for r in rows if r[0] == pk), None)
+        if row_data is None:
+            return
+        data_cols = cols[1:]
+        values = row_data[1:]
+        win = ctk.CTkToplevel(self)
+        win.title("Edit Row")
+        vars: List[ctk.StringVar] = []
+        for i, (col, val) in enumerate(zip(data_cols, values)):
+            ctk.CTkLabel(win, text=col).grid(row=i, column=0, sticky="e")
+            var = ctk.StringVar(value=str(val))
+            vars.append(var)
+            ctk.CTkEntry(win, textvariable=var).grid(row=i, column=1, padx=5, pady=2)
+
+        def save() -> None:
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("BEGIN")
+            data = {col: var.get() for col, var in zip(data_cols, vars)}
+            self.dm.update_row(self.current_table, pk, data, conn)
+            if messagebox.askyesno("Confirm", "Save changes?"):
+                conn.commit()
+            else:
+                conn.rollback()
+            conn.close()
+            win.destroy()
+            self._load_table(self.current_table)
+
+        def cancel() -> None:
+            win.destroy()
+
+        btn_frame = ctk.CTkFrame(win)
+        btn_frame.grid(row=len(data_cols), column=0, columnspan=2, pady=10)
+        ctk.CTkButton(btn_frame, text="Save", command=save).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Cancel", command=cancel).pack(side="left", padx=5)
+
+    def _delete_row(self, pk: int) -> None:
+        if not messagebox.askyesno("Confirm", "Delete selected row?"):
+            return
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("BEGIN")
+        self.dm.delete_row(self.current_table, pk, conn)
+        if messagebox.askyesno("Confirm", "Commit deletion?"):
+            conn.commit()
+        else:
+            conn.rollback()
+        conn.close()
+        self._load_table(self.current_table)
 
 
 # ---------------------------------------------------------------------------
