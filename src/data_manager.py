@@ -252,6 +252,29 @@ class DataManager:
         # not found in DB
         return code, 1
 
+    # --- Part identifiers -----------------------------------------------
+    def insert_part_identifiers(self, rows: Iterable[tuple]) -> int:
+        """Insert multiple part identifier rows and return number inserted."""
+        rows = list(rows)
+        if not rows:
+            return 0
+        query = (
+            "INSERT INTO part_identifiers (part_number, upc_code, qty, description) "
+            "VALUES (?, ?, ?, ?)"
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.executemany(query, rows)
+            conn.commit()
+            return cur.rowcount if cur.rowcount != -1 else len(rows)
+
+    def clear_part_identifiers(self) -> None:
+        """Remove all rows from ``part_identifiers`` table."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM part_identifiers")
+            conn.commit()
+
     # --- Scan summaries -------------------------------------------------
     def query_scan_summary(
         self,

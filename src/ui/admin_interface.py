@@ -12,7 +12,7 @@ from typing import Iterable, List, Optional
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 
-from src.logic import waybill_import
+from src.logic import waybill_import, part_identifier_import
 
 from src.config import DB_PATH
 from src.data_manager import DataManager
@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 def import_waybill_file(filepath: str, db_path: str = DB_PATH) -> int:
     """Import ``filepath`` using :func:`waybill_import.import_waybill`."""
     return waybill_import.import_waybill(filepath, db_path)
+
+
+def import_part_identifier_file(filepath: str, db_path: str = DB_PATH) -> int:
+    """Import ``filepath`` using :func:`part_identifier_import.import_part_identifiers`."""
+    return part_identifier_import.import_part_identifiers(filepath, db_path)
 
 
 def get_users(db_path: str = DB_PATH) -> List[tuple[int, str, str]]:
@@ -120,6 +125,13 @@ class AdminWindow(ctk.CTk):
         )
         btn.pack(pady=20)
 
+        id_btn = ctk.CTkButton(
+            self.tab_upload,
+            text="Import Part Identifiers",
+            command=self._choose_part_identifiers,
+        )
+        id_btn.pack(pady=(0, 20))
+
     def _choose_waybill(self) -> None:
         path = filedialog.askopenfilename(
             title="Select Waybill", filetypes=[("Excel files", "*.xlsx *.xls")]
@@ -135,6 +147,24 @@ class AdminWindow(ctk.CTk):
         logger.info("Imported %s with %d lines", path, inserted)
         messagebox.showinfo(
             "Waybill imported", f"{inserted} lines inserted from {Path(path).name}"
+        )
+
+    def _choose_part_identifiers(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select Part Identifier CSV", filetypes=[("CSV", "*.csv")]
+        )
+        if not path:
+            return
+        try:
+            inserted = import_part_identifier_file(path, self.db_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Part identifier import failed: %s", path)
+            messagebox.showerror("Import failed", str(exc))
+            return
+        logger.info("Imported part identifiers %s with %d rows", path, inserted)
+        messagebox.showinfo(
+            "Import complete",
+            f"{inserted} records inserted from {Path(path).name}",
         )
 
     # ---------------------------- User Management ---------------------------
