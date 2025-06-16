@@ -19,12 +19,13 @@ from src.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 
-#DB_PATH = "receiving_tracker.db"
+# DB_PATH = "receiving_tracker.db"
 
 
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 def import_waybill_file(filepath: str, db_path: str = DB_PATH) -> int:
     """Import ``filepath`` using :func:`waybill_import.import_waybill`."""
@@ -99,6 +100,7 @@ def export_summary_to_csv(rows: Iterable[tuple], filepath: str) -> None:
 # ---------------------------------------------------------------------------
 # UI classes
 # ---------------------------------------------------------------------------
+
 
 class AdminWindow(ctk.CTk):
     def __init__(self, db_path: str = DB_PATH):
@@ -204,7 +206,6 @@ class AdminWindow(ctk.CTk):
             variable=self.role_var,
             values=["ADMIN", "SHIPPER"],
         ).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-
 
         btn_frame = ctk.CTkFrame(form)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10)
@@ -365,8 +366,27 @@ class AdminWindow(ctk.CTk):
         self.table_buttons: List[ctk.CTkButton] = []
         self.table_frame = ctk.CTkFrame(self.tab_db)
         self.table_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
-        self.table_scroll = ctk.CTkScrollableFrame(self.table_frame)
-        self.table_scroll.pack(fill="both", expand=True)
+
+        toolbar = ctk.CTkFrame(self.table_frame)
+        toolbar.pack(fill="x")
+        self.add_btn = ctk.CTkButton(
+            toolbar, text="Add", command=self._add_row, state="disabled"
+        )
+        self.add_btn.pack(side="left", padx=2)
+        self.edit_btn = ctk.CTkButton(
+            toolbar, text="Edit", command=self._edit_selected_row, state="disabled"
+        )
+        self.edit_btn.pack(side="left", padx=2)
+        self.del_btn = ctk.CTkButton(
+            toolbar, text="Delete", command=self._delete_selected_row, state="disabled"
+        )
+        self.del_btn.pack(side="left", padx=2)
+
+        self.table_tree = ttk.Treeview(self.table_frame, show="headings")
+        self.table_tree.pack(fill="both", expand=True, pady=(5, 0))
+        self.table_tree.bind("<<TreeviewSelect>>", self._on_row_select)
+
+        self.selected_rowid: Optional[int] = None
 
         self._refresh_table_list()
 
@@ -386,25 +406,23 @@ class AdminWindow(ctk.CTk):
 
     def _load_table(self, name: str) -> None:
         self.current_table = name
-        for widget in self.table_scroll.winfo_children():
-            widget.destroy()
+        self.selected_rowid = None
+        self.edit_btn.configure(state="disabled")
+        self.del_btn.configure(state="disabled")
+        add_state = "normal" if name == "part_identifiers" else "disabled"
+        self.add_btn.configure(state=add_state)
+
+        for item in self.table_tree.get_children():
+            self.table_tree.delete(item)
+
         cols, rows = self.dm.fetch_rows(name)
-        header = ctk.CTkFrame(self.table_scroll)
-        header.pack(fill="x")
+        self.table_tree.configure(columns=cols)
         for col in cols:
-            ctk.CTkLabel(header, text=col, width=120).pack(side="left")
-        ctk.CTkLabel(header, text="Actions", width=160).pack(side="left")
+            self.table_tree.heading(col, text=col)
+            self.table_tree.column(col, width=120, anchor="center")
 
         for row in rows:
-            frame = ctk.CTkFrame(self.table_scroll)
-            frame.pack(fill="x", pady=1)
-            for val in row:
-                ctk.CTkLabel(frame, text=str(val), width=120, anchor="w").pack(side="left")
-            pk = row[0]
-            edit_btn = ctk.CTkButton(frame, text="Edit", width=70, command=lambda p=pk: self._edit_row(p))
-            edit_btn.pack(side="left", padx=2)
-            del_btn = ctk.CTkButton(frame, text="Delete", width=70, command=lambda p=pk: self._delete_row(p))
-            del_btn.pack(side="left", padx=2)
+            self.table_tree.insert("", "end", values=row)
 
     def _edit_row(self, pk: int) -> None:
         cols, rows = self.dm.fetch_rows(self.current_table)
@@ -441,7 +459,9 @@ class AdminWindow(ctk.CTk):
         btn_frame = ctk.CTkFrame(win)
         btn_frame.grid(row=len(data_cols), column=0, columnspan=2, pady=10)
         ctk.CTkButton(btn_frame, text="Save", command=save).pack(side="left", padx=5)
-        ctk.CTkButton(btn_frame, text="Cancel", command=cancel).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Cancel", command=cancel).pack(
+            side="left", padx=5
+        )
 
     def _delete_row(self, pk: int) -> None:
         if not messagebox.askyesno("Confirm", "Delete selected row?"):
@@ -456,10 +476,75 @@ class AdminWindow(ctk.CTk):
         conn.close()
         self._load_table(self.current_table)
 
+    # --------------------------- Table callbacks ---------------------------
+    def _on_row_select(self, event: object | None = None) -> None:
+        selection = self.table_tree.selection()
+        if not selection:
+            self.selected_rowid = None
+            self.edit_btn.configure(state="disabled")
+            self.del_btn.configure(state="disabled")
+            return
+        item = selection[0]
+        values = self.table_tree.item(item, "values")
+        if not values:
+            return
+        self.selected_rowid = int(values[0])
+        self.edit_btn.configure(state="normal")
+        self.del_btn.configure(state="normal")
+
+    def _add_row(self) -> None:
+        if self.current_table != "part_identifiers":
+            return
+
+        win = ctk.CTkToplevel(self)
+        win.title("Add Part Identifier")
+        fields = ["part_number", "upc_code", "qty", "description"]
+        vars: List[ctk.StringVar] = []
+        for i, field in enumerate(fields):
+            ctk.CTkLabel(win, text=field).grid(row=i, column=0, sticky="e")
+            var = ctk.StringVar()
+            vars.append(var)
+            ctk.CTkEntry(win, textvariable=var).grid(row=i, column=1, padx=5, pady=2)
+
+        def save() -> None:
+            part, upc, qty, desc = [v.get().strip() for v in vars]
+            if not part:
+                messagebox.showwarning("Missing data", "part_number required")
+                return
+            try:
+                qty_int = int(qty) if qty else 0
+            except ValueError:
+                messagebox.showwarning("Invalid", "qty must be integer")
+                return
+            self.dm.insert_part_identifiers([(part, upc, qty_int, desc)])
+            win.destroy()
+            self._load_table(self.current_table)
+
+        def cancel() -> None:
+            win.destroy()
+
+        btn_frame = ctk.CTkFrame(win)
+        btn_frame.grid(row=len(fields), column=0, columnspan=2, pady=10)
+        ctk.CTkButton(btn_frame, text="Save", command=save).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Cancel", command=cancel).pack(
+            side="left", padx=5
+        )
+
+    def _edit_selected_row(self) -> None:
+        if self.selected_rowid is None:
+            return
+        self._edit_row(self.selected_rowid)
+
+    def _delete_selected_row(self) -> None:
+        if self.selected_rowid is None:
+            return
+        self._delete_row(self.selected_rowid)
+
 
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
+
 
 def start_admin_interface(db_path: str = DB_PATH) -> None:
     """Launch the admin interface."""
