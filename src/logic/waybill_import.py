@@ -51,9 +51,8 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         .str.replace(",", ".")
         .astype(float)
     )
-    df["SHIP_DATE"] = (
-        pd.to_datetime(df["SHIP_DATE"], errors="coerce").dt.date.astype(str)
-    )
+    _ship_dates = pd.to_datetime(df["SHIP_DATE"], errors="coerce").dt.date
+    df["SHIP_DATE"] = _ship_dates.where(_ship_dates.notna(), "").astype(str)
     return df
 
 
