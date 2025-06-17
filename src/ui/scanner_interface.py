@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -38,6 +38,14 @@ SUBINV_MAP = {
 }
 
 
+def _last_working_day(ref: date) -> date:
+    """Return the previous weekday for ``ref`` (skip weekends)."""
+    day = ref - timedelta(days=1)
+    while day.weekday() >= 5:  # 5=Sat, 6=Sun
+        day -= timedelta(days=1)
+    return day
+
+
 
 class ShipperWindow(ctk.CTk):
     def __init__(
@@ -67,15 +75,16 @@ class ShipperWindow(ctk.CTk):
 
         today = datetime.utcnow().date()
         all_wbs = self._fetch_waybills(None)
-        dates = self.dm.get_waybill_dates()
+        import_dates = self.dm.get_waybill_import_dates()
+        target = _last_working_day(today)
         self.today_waybills = []
         for wb in all_wbs:
-            date_str = dates.get(wb)
+            date_str = import_dates.get(wb)
             try:
-                date = datetime.fromisoformat(date_str).date() if date_str else None
+                imp = datetime.fromisoformat(date_str).date() if date_str else None
             except Exception:
-                date = None
-            if date == today:
+                imp = None
+            if imp == target:
                 self.today_waybills.append(wb)
         self.other_waybills = [
             wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills
@@ -218,15 +227,16 @@ class ShipperWindow(ctk.CTk):
         if not all_wbs:
             messagebox.showinfo("Info", "No active waybills in database")
             return
-        dates = self.dm.get_waybill_dates()
+        import_dates = self.dm.get_waybill_import_dates()
+        target = _last_working_day(today)
         self.today_waybills = []
         for wb in all_wbs:
-            date_str = dates.get(wb)
+            date_str = import_dates.get(wb)
             try:
-                date = datetime.fromisoformat(date_str).date() if date_str else None
+                imp = datetime.fromisoformat(date_str).date() if date_str else None
             except Exception:
-                date = None
-            if date == today:
+                imp = None
+            if imp == target:
                 self.today_waybills.append(wb)
         self.other_waybills = [
             wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills
@@ -268,6 +278,7 @@ class ShipperWindow(ctk.CTk):
         rows = self._get_waybill_progress()
         dates = self.dm.get_waybill_dates()
         today = datetime.utcnow().date()
+        target = _last_working_day(today)
         for row_idx, (waybill, total, remaining) in enumerate(rows, start=1):
             date_str = dates.get(waybill, "")
             try:
@@ -275,7 +286,7 @@ class ShipperWindow(ctk.CTk):
             except Exception:
                 parsed = None
             color = (
-                "orange" if parsed and parsed < today and remaining > 0 else None
+                "orange" if parsed and parsed < target and remaining > 0 else None
             )
             kwargs = dict(
                 text=f"{waybill} ({date_str})", width=120, anchor="w", font=cell_font

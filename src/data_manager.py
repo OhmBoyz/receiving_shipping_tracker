@@ -223,6 +223,17 @@ class DataManager:
             rows = {row[0]: row[1] for row in cur.fetchall()}
         return rows
 
+    def get_waybill_import_dates(self) -> Dict[str, str]:
+        """Return mapping of active waybills to their import date."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT waybill_number, import_date FROM waybill_lines "
+                "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills)"
+            )
+            rows = {row[0]: row[1] for row in cur.fetchall()}
+        return rows
+
     def fetch_scans(self, waybill: str) -> Dict[str, int]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()

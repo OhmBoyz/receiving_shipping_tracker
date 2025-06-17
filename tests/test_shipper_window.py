@@ -4,7 +4,7 @@ import types
 import pytest
 
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.data_manager import DataManager
 
 
@@ -12,17 +12,21 @@ def setup_waybill(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     today = datetime.utcnow().date().isoformat()
+    target = datetime.utcnow().date() - timedelta(days=1)
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    import_date = target.isoformat()
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}')"
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}', '{import_date}')"
     )
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        f" VALUES ('WB1', 'P1', 10, 'DRV-RM', '', '', 0, '{today}')"
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        f" VALUES ('WB1', 'P1', 10, 'DRV-RM', '', '', 0, '{today}', '{import_date}')"
     )
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        f" VALUES ('WB2', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}')"
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        f" VALUES ('WB2', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}', '{import_date}')"
     )
     conn.commit()
     conn.close()
@@ -293,9 +297,9 @@ def test_today_menu_empty_and_status_label(temp_db, monkeypatch):
     cur = conn.cursor()
     old_date = '2000-01-01'
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        " VALUES ('OLDWB', 'P1', 1, 'DRV-AMO', '', '', 0, ?)",
-        (old_date,),
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        " VALUES ('OLDWB', 'P1', 1, 'DRV-AMO', '', '', 0, ?, ?)",
+        (old_date, old_date),
     )
     conn.commit()
     conn.close()

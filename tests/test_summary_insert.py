@@ -2,20 +2,24 @@ import sqlite3
 import pytest
 
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def setup_waybill_multi(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     today = datetime.utcnow().date().isoformat()
+    target = datetime.utcnow().date() - timedelta(days=1)
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    import_date = target.isoformat()
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}')"
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}', '{import_date}')"
     )
     cur.execute(
-        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        f" VALUES ('WB1', 'P2', 10, 'DRV-RM', '', '', 0, '{today}')"
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        f" VALUES ('WB1', 'P2', 10, 'DRV-RM', '', '', 0, '{today}', '{import_date}')"
     )
     conn.commit()
     conn.close()

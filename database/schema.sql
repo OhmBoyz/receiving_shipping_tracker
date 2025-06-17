@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS waybill_lines (
     locator TEXT,
     description TEXT,
     item_cost REAL,
-    date TEXT NOT NULL
+    date TEXT NOT NULL,
+    import_date TEXT NOT NULL DEFAULT (DATE('now'))
 );
 
 -- scan_sessions

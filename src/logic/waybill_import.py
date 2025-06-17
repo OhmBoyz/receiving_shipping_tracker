@@ -9,6 +9,7 @@ from typing import Iterable
 import pandas as pd
 
 from src.config import DB_PATH
+from datetime import datetime
 
 #DB_PATH = "receiving_tracker.db"
 
@@ -60,8 +61,8 @@ def _insert_rows(rows: Iterable[tuple], db_path: str) -> int:
     """Insert rows into waybill_lines and return number inserted."""
     query = (
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total,"
-        " subinv, locator, description, item_cost, date) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        " subinv, locator, description, item_cost, date, import_date) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     rows = list(rows)
     with sqlite3.connect(db_path) as conn:
@@ -85,6 +86,7 @@ def import_waybill(filepath: str, db_path: str = DB_PATH) -> int:
             row["DESCRIPTION"],
             row["ITEM_COSTS"],
             row["SHIP_DATE"],
+            datetime.utcnow().date().isoformat(),
         )
         for _, row in df.iterrows()
     ]
