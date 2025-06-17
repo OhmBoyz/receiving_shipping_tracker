@@ -7,7 +7,7 @@ import logging
 import csv
 import sqlite3
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
@@ -335,26 +335,25 @@ class AdminWindow(ctk.CTk):
         self.dm = DataManager(self.db_path)
         self.wb_list = ctk.CTkScrollableFrame(self.tab_waybill, width=200)
         self.wb_list.pack(side="left", fill="y", padx=10, pady=10)
-        self.wb_buttons: List[ctk.CTkButton] = []
+        self.wb_buttons: dict[str, ctk.CTkButton] = {}
 
         self.wb_actions = ctk.CTkFrame(self.tab_waybill)
         self.wb_actions.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-        self.wb_edit_btn = ctk.CTkButton(
-            self.wb_actions,
-            text="Edit",
-            command=self._edit_selected_waybill,
-            state="disabled",
-        )
-        self.wb_edit_btn.pack(pady=5)
+        toolbar = ctk.CTkFrame(self.wb_actions)
+        toolbar.pack(fill="x")
 
         self.wb_term_btn = ctk.CTkButton(
-            self.wb_actions,
+            toolbar,
             text="Terminate",
             command=self._terminate_selected_waybill,
             state="disabled",
         )
-        self.wb_term_btn.pack(pady=5)
+        self.wb_term_btn.pack(side="left", padx=5)
+
+        self.wb_table = ctk.CTkScrollableFrame(self.wb_actions)
+        self.wb_table.pack(fill="both", expand=True, pady=5)
+        self._wb_row_widgets: dict[int, tuple[ctk.StringVar, ctk.CTkLabel, str]] = {}
 
         self.selected_waybill: Optional[str] = None
         self._refresh_waybill_list()
@@ -362,7 +361,7 @@ class AdminWindow(ctk.CTk):
     def _refresh_waybill_list(self) -> None:
         for widget in self.wb_list.winfo_children():
             widget.destroy()
-        self.wb_buttons = []
+        self.wb_buttons = {}
         progress = self.dm.get_waybill_progress()
         for wb, total, remaining in progress:
             text = f"{wb} ({total-remaining}/{total})"
@@ -373,12 +372,16 @@ class AdminWindow(ctk.CTk):
                 command=lambda n=wb: self._select_waybill(n),
             )
             btn.pack(fill="x", pady=2)
-            self.wb_buttons.append(btn)
+            self.wb_buttons[wb] = btn
 
     def _select_waybill(self, wb: str) -> None:
         self.selected_waybill = wb
-        self.wb_edit_btn.configure(state="normal")
+        for btn in self.wb_buttons.values():
+            btn.configure(fg_color=None, text_color=None)
+        if wb in self.wb_buttons:
+            self.wb_buttons[wb].configure(fg_color="#1f6aa5", text_color="white")
         self.wb_term_btn.configure(state="normal")
+        self._load_waybill_table(wb)
 
     def _edit_selected_waybill(self) -> None:
         if not self.selected_waybill:
@@ -428,6 +431,54 @@ class AdminWindow(ctk.CTk):
     def _terminate_waybill(self, waybill: str) -> None:
         self.dm.mark_waybill_terminated(waybill, 0)
         logger.info("Waybill %s marked terminated", waybill)
+        self._refresh_waybill_list()
+
+    def _load_waybill_table(self, waybill: str) -> None:
+        lines = self.dm.get_waybill_lines(waybill)
+        scans = self.dm.fetch_scans(waybill)
+        for widget in self.wb_table.winfo_children():
+            widget.destroy()
+        header = ctk.CTkFrame(self.wb_table)
+        header.pack(fill="x")
+        for text, width in [
+            ("Part", 200),
+            ("Qty Total", 80),
+            ("Remaining", 80),
+        ]:
+            ctk.CTkLabel(header, text=text, width=width).pack(side="left")
+
+        self._wb_row_widgets.clear()
+        for rowid, part, qty_total, _ in lines:
+            remaining = qty_total - scans.get(part, 0)
+            frame = ctk.CTkFrame(self.wb_table)
+            frame.pack(fill="x", pady=1)
+            ctk.CTkLabel(frame, text=part, width=200, anchor="w").pack(side="left")
+            var = ctk.StringVar(value=str(qty_total))
+            entry = ctk.CTkEntry(frame, textvariable=var, width=80)
+            entry.pack(side="left", padx=5)
+            lbl = ctk.CTkLabel(frame, text=str(remaining), width=80)
+            lbl.pack(side="left")
+            entry.bind(
+                "<Return>",
+                lambda e, rid=rowid, p=part, v=var, lb=lbl: self._update_qty(rid, p, v, lb),
+            )
+            entry.bind(
+                "<FocusOut>",
+                lambda e, rid=rowid, p=part, v=var, lb=lbl: self._update_qty(rid, p, v, lb),
+            )
+            self._wb_row_widgets[rowid] = (var, lbl, part)
+
+    def _update_qty(
+        self, rowid: int, part: str, var: ctk.StringVar, label: ctk.CTkLabel
+    ) -> None:
+        try:
+            new_qty = int(var.get())
+        except ValueError:
+            return
+        self.dm.update_row("waybill_lines", rowid, {"qty_total": new_qty})
+        scans = self.dm.fetch_scans(self.selected_waybill or "")
+        remaining = new_qty - scans.get(part, 0)
+        label.configure(text=str(max(remaining, 0)))
         self._refresh_waybill_list()
 
     def _load_summary(self) -> None:
