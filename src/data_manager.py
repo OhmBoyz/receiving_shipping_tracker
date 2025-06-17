@@ -178,7 +178,11 @@ class DataManager:
     def fetch_waybills(self) -> List[str]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
+            cur.execute(
+                "SELECT DISTINCT w.waybill_number FROM waybill_lines w "
+                "LEFT JOIN inactive_waybills i ON UPPER(w.waybill_number)=UPPER(i.waybill_number) "
+                "WHERE i.waybill_number IS NULL"
+            )
             rows = [r[0] for r in cur.fetchall()]
         return rows
 
@@ -196,6 +200,10 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
+                "SELECT waybill_number FROM inactive_waybills"
+            )
+            inactive = {row[0].upper() for row in cur.fetchall()}
+            cur.execute(
                 "SELECT waybill_number, SUM(qty_total) FROM waybill_lines GROUP BY waybill_number"
             )
             totals = {row[0]: int(row[1]) for row in cur.fetchall()}
@@ -205,6 +213,8 @@ class DataManager:
             scanned = {row[0]: int(row[1]) for row in cur.fetchall()}
         progress = []
         for wb, total in totals.items():
+            if wb.upper() in inactive:
+                continue
             done = scanned.get(wb, 0)
             remaining = max(total - done, 0)
             progress.append((wb, total, remaining))
@@ -220,6 +230,25 @@ class DataManager:
             )
             rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
         return rows
+
+    def mark_waybill_inactive(self, waybill: str) -> None:
+        """Record ``waybill`` as inactive."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR IGNORE INTO inactive_waybills (waybill_number) VALUES (?)",
+                (waybill.upper(),),
+            )
+            conn.commit()
+
+    def get_waybill_dates(self) -> Dict[str, str]:
+        """Return {waybill: date} for all waybills."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT waybill_number, MIN(date) FROM waybill_lines GROUP BY waybill_number"
+            )
+            return {row[0]: row[1] for row in cur.fetchall()}
 
     def insert_scan_event(
         self,

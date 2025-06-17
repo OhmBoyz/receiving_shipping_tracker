@@ -17,6 +17,11 @@ from src.logic import waybill_import, part_identifier_import
 from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 
+SUBINV_MAP = {
+    "DRV-AMO": "AMO",
+    "DRV-RM": "KANBAN",
+}
+
 logger = logging.getLogger(__name__)
 
 # DB_PATH = "receiving_tracker.db"
@@ -116,11 +121,13 @@ class AdminWindow(ctk.CTk):
         self.tab_users = tabs.add("User Management")
         self.tab_summary = tabs.add("Scan Summaries")
         self.tab_db = tabs.add("Database Viewer")
+        self.tab_waybills = tabs.add("Waybill Manager")
 
         self._build_upload_tab()
         self._build_user_tab()
         self._build_summary_tab()
         self._build_db_tab()
+        self._build_waybill_tab()
 
     # ---------------------------- Waybill Upload ----------------------------
     def _build_upload_tab(self) -> None:
@@ -539,6 +546,174 @@ class AdminWindow(ctk.CTk):
         if self.selected_rowid is None:
             return
         self._delete_row(self.selected_rowid)
+
+    # --------------------------- Waybill Manager ---------------------------
+    def _build_waybill_tab(self) -> None:
+        self.wb_tree = ttk.Treeview(
+            self.tab_waybills,
+            columns=["Waybill", "Date", "Remaining"],
+            show="headings",
+            height=15,
+        )
+        for col in ["Waybill", "Date", "Remaining"]:
+            self.wb_tree.heading(col, text=col)
+            self.wb_tree.column(col, width=120, anchor="center")
+        self.wb_tree.pack(fill="both", expand=True, padx=10, pady=10)
+        self.wb_tree.bind("<<TreeviewSelect>>", self._on_wb_select)
+        self.wb_tree.bind("<Double-1>", lambda e: self._edit_selected_waybill())
+
+        toolbar = ctk.CTkFrame(self.tab_waybills)
+        toolbar.pack(fill="x")
+        self.wb_edit_btn = ctk.CTkButton(
+            toolbar, text="Edit", command=self._edit_selected_waybill, state="disabled"
+        )
+        self.wb_edit_btn.pack(side="left", padx=5)
+        self.wb_complete_btn = ctk.CTkButton(
+            toolbar, text="Force Complete", command=self._force_complete_waybill, state="disabled"
+        )
+        self.wb_complete_btn.pack(side="left", padx=5)
+
+        self._refresh_waybill_list()
+
+    def _refresh_waybill_list(self) -> None:
+        for item in self.wb_tree.get_children():
+            self.wb_tree.delete(item)
+        progress = self.dm.get_waybill_progress()
+        dates = self.dm.get_waybill_dates()
+        for wb, _total, remaining in progress:
+            if remaining <= 0:
+                continue
+            date = dates.get(wb, "")
+            self.wb_tree.insert("", "end", iid=wb, values=(wb, date, remaining))
+        self.selected_waybill = None
+        self.wb_edit_btn.configure(state="disabled")
+        self.wb_complete_btn.configure(state="disabled")
+
+    def _on_wb_select(self, event: object | None = None) -> None:
+        sel = self.wb_tree.selection()
+        if not sel:
+            self.selected_waybill = None
+            self.wb_edit_btn.configure(state="disabled")
+            self.wb_complete_btn.configure(state="disabled")
+            return
+        self.selected_waybill = self.wb_tree.item(sel[0], "values")[0]
+        self.wb_edit_btn.configure(state="normal")
+        self.wb_complete_btn.configure(state="normal")
+
+    def _edit_selected_waybill(self) -> None:
+        wb = getattr(self, "selected_waybill", None)
+        if not wb:
+            return
+        self._open_waybill_window(wb)
+
+    def _force_complete_waybill(self) -> None:
+        wb = getattr(self, "selected_waybill", None)
+        if not wb:
+            return
+        if messagebox.askyesno("Confirm", "Force complete selected waybill?"):
+            self.dm.mark_waybill_inactive(wb)
+            self._refresh_waybill_list()
+
+    def _open_waybill_window(self, waybill: str) -> None:
+        win = ctk.CTkToplevel(self)
+        win.title(f"Waybill {waybill}")
+
+        columns = ["ID", "Part", "Subinv", "Total", "Scanned", "Remaining"]
+        tree = ttk.Treeview(win, columns=columns, show="headings", height=15)
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor="center")
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        edit_btn = ctk.CTkButton(
+            win, text="Edit Qty", state="disabled"
+        )
+        edit_btn.pack(pady=(0, 10))
+
+        def load_lines() -> None:
+            for item in tree.get_children():
+                tree.delete(item)
+            scans = self.dm.fetch_scans(waybill)
+            rows = self.dm.get_waybill_lines(waybill)
+            lines: List[dict] = []
+            groups: dict[str, List[dict]] = {}
+            for row in rows:
+                info = {
+                    "id": row[0],
+                    "part": row[1].upper(),
+                    "qty_total": int(row[2]),
+                    "subinv": SUBINV_MAP.get(row[3], row[3]),
+                }
+                groups.setdefault(info["part"], []).append(info)
+            for part, grp in groups.items():
+                grp.sort(key=lambda ln: 0 if "AMO" in ln["subinv"] else 1)
+                remaining = scans.get(part, 0)
+                for ln in grp:
+                    alloc = min(ln["qty_total"], remaining)
+                    ln["scanned"] = alloc
+                    ln["remaining"] = ln["qty_total"] - alloc
+                    remaining -= alloc
+                    if ln["remaining"] > 0:
+                        lines.append(ln)
+            for ln in lines:
+                tree.insert(
+                    "",
+                    "end",
+                    iid=str(ln["id"]),
+                    values=(
+                        ln["id"],
+                        ln["part"],
+                        ln["subinv"],
+                        ln["qty_total"],
+                        ln.get("scanned", 0),
+                        ln.get("remaining", 0),
+                    ),
+                )
+            edit_btn.configure(state="disabled")
+
+        def on_select(event=None) -> None:
+            sel = tree.selection()
+            if sel:
+                edit_btn.configure(state="normal")
+            else:
+                edit_btn.configure(state="disabled")
+
+        def edit_line() -> None:
+            sel = tree.selection()
+            if not sel:
+                return
+            pk = int(tree.item(sel[0], "values")[0])
+            current = tree.item(sel[0], "values")[3]
+            dlg = ctk.CTkToplevel(win)
+            dlg.title("Edit Quantity")
+            var = ctk.StringVar(value=str(current))
+            ctk.CTkLabel(dlg, text="qty_total").grid(row=0, column=0, sticky="e")
+            ctk.CTkEntry(dlg, textvariable=var).grid(row=0, column=1, padx=5, pady=5)
+
+            def save() -> None:
+                try:
+                    new_qty = int(var.get())
+                except ValueError:
+                    messagebox.showwarning("Invalid", "qty must be integer")
+                    return
+                self.dm.update_row("waybill_lines", pk, {"qty_total": new_qty})
+                dlg.destroy()
+                load_lines()
+                self._refresh_waybill_list()
+
+            def cancel() -> None:
+                dlg.destroy()
+
+            bf = ctk.CTkFrame(dlg)
+            bf.grid(row=1, column=0, columnspan=2, pady=10)
+            ctk.CTkButton(bf, text="Save", command=save).pack(side="left", padx=5)
+            ctk.CTkButton(bf, text="Cancel", command=cancel).pack(side="left", padx=5)
+
+        edit_btn.configure(command=edit_line)
+        tree.bind("<<TreeviewSelect>>", on_select)
+        tree.bind("<Double-1>", lambda e: edit_line())
+        load_lines()
+
 
 
 # ---------------------------------------------------------------------------
