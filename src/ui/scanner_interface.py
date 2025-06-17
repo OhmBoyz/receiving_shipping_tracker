@@ -58,6 +58,11 @@ class ShipperWindow(ctk.CTk):
 
         self.title("Shipper Interface")
         self.geometry("900x600")
+        if hasattr(self, "state"):
+            try:
+                self.state("zoomed")
+            except Exception:
+                pass
         ctk.set_appearance_mode(APPEARANCE_MODE)
 
         today = datetime.utcnow().date().isoformat()
@@ -70,26 +75,43 @@ class ShipperWindow(ctk.CTk):
             return
 
         self.waybill_var = ctk.StringVar(value=self.waybills[0])
-        ctk.CTkLabel(self, text="Select Waybill:").pack(pady=5)
+        if hasattr(self, "columnconfigure"):
+            try:
+                self.columnconfigure(0, weight=1)
+                self.rowconfigure(3, weight=1)
+            except Exception:
+                pass
+
+        ctk.CTkLabel(self, text="Select Waybill:").grid(row=0, column=0, pady=5, sticky="w")
         menu = ctk.CTkOptionMenu(self, values=self.waybills, variable=self.waybill_var, command=self.load_waybill)
-        menu.pack()
+        menu.grid(row=1, column=0, sticky="w")
         self.waybill_menu = menu
 
         show_all_btn = ctk.CTkButton(self, text="Show All Waybills", command=self._show_all_waybills)
-        show_all_btn.pack(pady=(0, 5))
+        show_all_btn.grid(row=2, column=0, pady=(0, 5), sticky="w")
 
-        self.content_frame = ctk.CTkFrame(self)
-        self.content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.main_frame = ctk.CTkFrame(self)
+        self.main_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
+        if hasattr(self.main_frame, "grid_columnconfigure"):
+            try:
+                self.main_frame.grid_columnconfigure(0, weight=3)
+                self.main_frame.grid_columnconfigure(1, weight=1)
+                self.main_frame.grid_rowconfigure(0, weight=1)
+            except Exception:
+                pass
+
+        self.lines_frame = ctk.CTkFrame(self.main_frame)
+        self.lines_frame.grid(row=0, column=0, sticky="nsew")
+
+        self.sidebar_frame = ctk.CTkFrame(self.main_frame)
+        self.sidebar_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
         # table summarizing progress for all waybills
-        self.progress_frame = ctk.CTkFrame(self)
-        self.progress_frame.pack(fill="x", padx=10, pady=(0, 10))
+        self.progress_frame = ctk.CTkFrame(self.sidebar_frame)
+        self.progress_frame.pack(fill="x", pady=(0, 10))
 
-        self.lines_frame = ctk.CTkFrame(self.content_frame)
-        self.lines_frame.pack(side="left", fill="both", expand=True)
-
-        self.alloc_frame = ctk.CTkFrame(self.content_frame)
-        self.alloc_frame.pack(side="left", fill="y", padx=(10, 0))
+        self.alloc_frame = ctk.CTkFrame(self.sidebar_frame)
+        self.alloc_frame.pack(fill="x", pady=(0, 10))
 
         font = ctk.CTkFont(size=28, weight="bold")
         self.amo_label = ctk.CTkLabel(self.alloc_frame, text="AMO", width=160, height=60, font=font, fg_color="gray80", corner_radius=8)
@@ -104,8 +126,8 @@ class ShipperWindow(ctk.CTk):
 
         self.last_entry_var = ctk.StringVar(value="")
 
-        controls = ctk.CTkFrame(self)
-        controls.pack(fill="x", pady=5)
+        controls = ctk.CTkFrame(self.main_frame)
+        controls.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
 
         self.qty_var = ctk.IntVar(value=1)
         ctk.CTkLabel(controls, text="Qty:").pack(side="left")
@@ -127,11 +149,8 @@ class ShipperWindow(ctk.CTk):
         )
         logout_btn.pack(side="left", padx=(20, 0))
 
-        self.footer_frame = ctk.CTkFrame(self)
-        self.footer_frame.pack(fill="x")
-
         self.last_entry_label = ctk.CTkLabel(
-            self.footer_frame,
+            self.sidebar_frame,
             textvariable=self.last_entry_var,
             font=ctk.CTkFont(size=18, weight="bold"),
         )
@@ -175,31 +194,44 @@ class ShipperWindow(ctk.CTk):
         for widget in self.progress_frame.winfo_children():
             widget.destroy()
 
-        headers = ctk.CTkFrame(self.progress_frame)
-        headers.pack(fill="x")
-        for text, width in [
+        header_font = ctk.CTkFont(size=20, weight="bold")
+        cell_font = ctk.CTkFont(size=18)
+
+        for idx, (text, width) in enumerate([
             ("Waybill", 120),
             ("Total", 80),
             ("Remaining", 80),
             ("Progress", 300),
-        ]:
-            ctk.CTkLabel(headers, text=text, width=width).pack(side="left")
+        ]):
+            lbl = ctk.CTkLabel(self.progress_frame, text=text, width=width, font=header_font)
+            lbl.grid(row=0, column=idx, sticky="w")
 
         rows = self._get_waybill_progress()
         dates = self.dm.get_waybill_dates()
         today = datetime.utcnow().date()
-        for waybill, total, remaining in rows:
-            frame = ctk.CTkFrame(self.progress_frame)
-            frame.pack(fill="x", pady=1)
+        for row_idx, (waybill, total, remaining) in enumerate(rows, start=1):
             date = dates.get(waybill, "")
-            lbl = ctk.CTkLabel(frame, text=f"{waybill} ({date})", width=120, anchor="w")
+            lbl = ctk.CTkLabel(
+                self.progress_frame,
+                text=f"{waybill} ({date})",
+                width=120,
+                anchor="w",
+                font=cell_font,
+            )
             if date and datetime.fromisoformat(date).date() < today and remaining > 0:
                 lbl.configure(text_color="orange")
-            lbl.pack(side="left")
-            ctk.CTkLabel(frame, text=str(total), width=80).pack(side="left")
-            ctk.CTkLabel(frame, text=str(remaining), width=80).pack(side="left")
-            pb = ctk.CTkProgressBar(frame, width=300)
-            pb.pack(side="left", padx=5)
+            lbl.grid(row=row_idx, column=0, sticky="w", pady=1)
+
+            ctk.CTkLabel(
+                self.progress_frame, text=str(total), width=80, font=cell_font
+            ).grid(row=row_idx, column=1, sticky="w")
+
+            ctk.CTkLabel(
+                self.progress_frame, text=str(remaining), width=80, font=cell_font
+            ).grid(row=row_idx, column=2, sticky="w")
+
+            pb = ctk.CTkProgressBar(self.progress_frame, width=300)
+            pb.grid(row=row_idx, column=3, sticky="ew", padx=5)
             ratio = (total - remaining) / total if total else 0
             pb.set(ratio)
             pb.configure(progress_color=_color_from_ratio(ratio))
@@ -313,25 +345,27 @@ class ShipperWindow(ctk.CTk):
         # Build UI table
         headers = ctk.CTkFrame(self.lines_frame)
         headers.pack(fill="x")
+        header_font = ctk.CTkFont(size=20, weight="bold")
+        cell_font = ctk.CTkFont(size=18)
         for text, width in [
             ("Part", 200),
             ("Total", 80),
             ("Progress", 300),
             ("Remaining", 80),
         ]:
-            ctk.CTkLabel(headers, text=text, width=width).pack(side="left")
+            ctk.CTkLabel(headers, text=text, width=width, font=header_font).pack(side="left")
 
         for part, lines in part_groups.items():
             row_frame = ctk.CTkFrame(self.lines_frame)
             row_frame.pack(fill="x", pady=1)
-            ctk.CTkLabel(row_frame, text=part, width=200, anchor="w").pack(side="left")
+            ctk.CTkLabel(row_frame, text=part, width=200, anchor="w", font=cell_font).pack(side="left")
 
             total_qty = sum(l.qty_total for l in lines)
-            ctk.CTkLabel(row_frame, text=str(total_qty), width=80).pack(side="left")
+            ctk.CTkLabel(row_frame, text=str(total_qty), width=80, font=cell_font).pack(side="left")
 
             pb = ctk.CTkProgressBar(row_frame, width=300)
             pb.pack(side="left", padx=5)
-            rem_label = ctk.CTkLabel(row_frame, width=80)
+            rem_label = ctk.CTkLabel(row_frame, width=80, font=cell_font)
             rem_label.pack(side="left")
 
             for ln in lines:
