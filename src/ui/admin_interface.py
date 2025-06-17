@@ -377,7 +377,7 @@ class AdminWindow(ctk.CTk):
     def _select_waybill(self, wb: str) -> None:
         self.selected_waybill = wb
         for btn in self.wb_buttons.values():
-            btn.configure(fg_color=None, text_color=None)
+            btn.configure(fg_color="grey", text_color="black")
         if wb in self.wb_buttons:
             self.wb_buttons[wb].configure(fg_color="#1f6aa5", text_color="white")
         self.wb_term_btn.configure(state="normal")
