@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .config import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:
@@ -178,9 +181,22 @@ class DataManager:
     def fetch_waybills(self) -> List[str]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
+            cur.execute(
+                "SELECT DISTINCT waybill_number FROM waybill_lines WHERE active=1"
+            )
             rows = [r[0] for r in cur.fetchall()]
         return rows
+
+    def mark_waybill_inactive(self, waybill_number: str) -> None:
+        """Set ``active`` to 0 for all rows matching ``waybill_number``."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE waybill_lines SET active=0 WHERE UPPER(waybill_number)=UPPER(?)",
+                (waybill_number,),
+            )
+            conn.commit()
+        logger.info("Marked waybill %s inactive", waybill_number)
 
     def fetch_scans(self, waybill: str) -> Dict[str, int]:
         with sqlite3.connect(self.db_path) as conn:
