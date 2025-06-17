@@ -343,6 +343,15 @@ class AdminWindow(ctk.CTk):
         toolbar = ctk.CTkFrame(self.wb_actions)
         toolbar.pack(fill="x")
 
+        self.edit_mode = False
+        self.wb_edit_btn = ctk.CTkButton(
+            toolbar,
+            text="Edit Waybill",
+            command=self._toggle_edit_mode,
+            state="disabled",
+        )
+        self.wb_edit_btn.pack(side="left", padx=5)
+
         self.wb_term_btn = ctk.CTkButton(
             toolbar,
             text="Terminate",
@@ -353,7 +362,7 @@ class AdminWindow(ctk.CTk):
 
         self.wb_table = ctk.CTkScrollableFrame(self.wb_actions)
         self.wb_table.pack(fill="both", expand=True, pady=5)
-        self._wb_row_widgets: dict[int, tuple[ctk.StringVar, ctk.CTkLabel, str]] = {}
+        self._wb_row_widgets: dict[int, tuple[ctk.StringVar, ctk.CTkLabel, str, ctk.CTkEntry]] = {}
 
         self.selected_waybill: Optional[str] = None
         self._refresh_waybill_list()
@@ -381,12 +390,24 @@ class AdminWindow(ctk.CTk):
         if wb in self.wb_buttons:
             self.wb_buttons[wb].configure(fg_color="#1f6aa5", text_color="white")
         self.wb_term_btn.configure(state="normal")
+        self.wb_edit_btn.configure(state="normal", text="Edit Waybill")
+        self.edit_mode = False
         self._load_waybill_table(wb)
 
     def _edit_selected_waybill(self) -> None:
         if not self.selected_waybill:
             return
         self._edit_waybill(self.selected_waybill)
+
+    def _toggle_edit_mode(self) -> None:
+        if not self.selected_waybill:
+            return
+        self.edit_mode = not self.edit_mode
+        state = "normal" if self.edit_mode else "readonly"
+        for var, lbl, part, entry in self._wb_row_widgets.values():
+            entry.configure(state=state)
+        text = "Done Editing" if self.edit_mode else "Edit Waybill"
+        self.wb_edit_btn.configure(text=text)
 
     def _terminate_selected_waybill(self) -> None:
         if not self.selected_waybill:
@@ -494,6 +515,8 @@ class AdminWindow(ctk.CTk):
             qty_lbl.pack(side="left")
             var = ctk.StringVar(value=str(remaining))
             entry = ctk.CTkEntry(frame, textvariable=var, width=80)
+            state = "normal" if self.edit_mode else "readonly"
+            entry.configure(state=state)
             entry.pack(side="left", padx=5)
             entry.bind(
                 "<Return>",
@@ -503,11 +526,13 @@ class AdminWindow(ctk.CTk):
                 "<FocusOut>",
                 lambda e, rid=rowid, p=part, v=var, lb=qty_lbl: self._update_qty(rid, p, v, lb),
             )
-            self._wb_row_widgets[rowid] = (var, qty_lbl, part)
+            self._wb_row_widgets[rowid] = (var, qty_lbl, part, entry)
 
     def _update_qty(
         self, rowid: int, part: str, var: ctk.StringVar, label: ctk.CTkLabel
     ) -> None:
+        if not self.edit_mode:
+            return
         try:
             new_remaining = int(var.get())
         except ValueError:
@@ -516,12 +541,36 @@ class AdminWindow(ctk.CTk):
         if new_remaining < 0:
             messagebox.showwarning("Invalid value", "Quantity cannot be negative")
             new_remaining = 0
-        scans = self.dm.fetch_scans(self.selected_waybill or "")
-        scanned = scans.get(part, 0)
-        new_total = scanned + max(new_remaining, 0)
+        waybill = self.selected_waybill or ""
+        lines = self.dm.get_waybill_lines(waybill)
+        scans = self.dm.fetch_scans(waybill)
+
+        part_groups: Dict[str, List[tuple]] = {}
+        for ln in lines:
+            part_groups.setdefault(ln[1], []).append(ln)
+
+        allocated: Dict[int, int] = {}
+        for pnum, lns in part_groups.items():
+            lns.sort(key=lambda l: 0 if "AMO" in l[3] else 1)
+            remaining = scans.get(pnum, 0)
+            for ln in lns:
+                alloc = min(ln[2], remaining)
+                allocated[ln[0]] = alloc
+                remaining -= alloc
+
+        orig_line = next((ln for ln in lines if ln[0] == rowid), None)
+        if orig_line is None:
+            return
+        scanned_for_line = allocated.get(rowid, 0)
+        max_remaining = orig_line[2] - scanned_for_line
+        if new_remaining > max_remaining:
+            new_remaining = max_remaining
+        new_total = scanned_for_line + max(new_remaining, 0)
         self.dm.update_row("waybill_lines", rowid, {"qty_total": new_total})
         label.configure(text=str(new_total))
         self._refresh_waybill_list()
+        if self.selected_waybill:
+            self._load_waybill_table(self.selected_waybill)
 
     def _load_summary(self) -> None:
         user_name = self.summary_user_var.get()
