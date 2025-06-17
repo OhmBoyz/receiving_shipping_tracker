@@ -175,9 +175,32 @@ class DataManager:
             conn.commit()
 
     # --- Waybill / scanning queries ------------------------------------
-    def fetch_waybills(self) -> List[str]:
+    def fetch_waybills(self, active_only: bool = False) -> List[str]:
+        """Return distinct waybill numbers.
+
+        If ``active_only`` is ``True`` and a ``waybills`` table with a
+        ``status`` or ``active`` column exists, only waybills marked as active
+        are returned. The check is optional so older databases without the
+        table/column continue to work.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
+            if active_only:
+                cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='waybills'"
+                )
+                if cur.fetchone():
+                    cur.execute("PRAGMA table_info(waybills)")
+                    cols = {row[1] for row in cur.fetchall()}
+                    if "status" in cols:
+                        cur.execute(
+                            "SELECT waybill_number FROM waybills WHERE UPPER(status)='ACTIVE'"
+                        )
+                        return [r[0] for r in cur.fetchall()]
+                    if "active" in cols:
+                        cur.execute("SELECT waybill_number FROM waybills WHERE active=1")
+                        return [r[0] for r in cur.fetchall()]
+
             cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
             rows = [r[0] for r in cur.fetchall()]
         return rows

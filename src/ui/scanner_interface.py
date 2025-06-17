@@ -141,7 +141,8 @@ class ShipperWindow(ctk.CTk):
         return self.dm.create_session(self.user_id, waybill)
 
     def _fetch_waybills(self) -> List[str]:
-        return self.dm.fetch_waybills()
+        """Return only waybills currently marked as active."""
+        return self.dm.fetch_waybills(active_only=True)
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
         return self.dm.fetch_scans(waybill)
