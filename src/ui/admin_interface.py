@@ -397,11 +397,14 @@ class AdminWindow(ctk.CTk):
         lines = self.dm.get_waybill_lines(waybill)
         if not lines:
             return
+        scans = self.dm.fetch_scans(waybill)
         win = ctk.CTkToplevel(self)
         vars: List[ctk.StringVar] = []
         for i, line in enumerate(lines):
+            scanned = scans.get(line[1], 0)
+            remaining = line[2] - scanned
             ctk.CTkLabel(win, text=f"{line[1]} {line[3]}").grid(row=i, column=0, sticky="e")
-            var = ctk.StringVar(value=str(line[2]))
+            var = ctk.StringVar(value=str(remaining))
             vars.append(var)
             ctk.CTkEntry(win, textvariable=var, width=80).grid(row=i, column=1, padx=5, pady=2)
 
@@ -410,10 +413,16 @@ class AdminWindow(ctk.CTk):
             conn.execute("BEGIN")
             for ln, var in zip(lines, vars):
                 try:
-                    qty = int(var.get())
+                    new_remaining = int(var.get())
                 except ValueError:
-                    qty = ln[2]
-                self.dm.update_row("waybill_lines", ln[0], {"qty_total": qty}, conn)
+                    messagebox.showwarning("Invalid value", "Enter a numeric quantity")
+                    new_remaining = ln[2] - scans.get(ln[1], 0)
+                if new_remaining < 0:
+                    messagebox.showwarning("Invalid value", "Quantity cannot be negative")
+                    new_remaining = 0
+                scanned = scans.get(ln[1], 0)
+                new_total = scanned + max(new_remaining, 0)
+                self.dm.update_row("waybill_lines", ln[0], {"qty_total": new_total}, conn)
             conn.commit()
             conn.close()
             win.destroy()
@@ -449,11 +458,12 @@ class AdminWindow(ctk.CTk):
 
         self._wb_row_widgets.clear()
         for rowid, part, qty_total, _ in lines:
-            remaining = qty_total - scans.get(part, 0)
+            scanned = scans.get(part, 0)
+            remaining = qty_total - scanned
             frame = ctk.CTkFrame(self.wb_table)
             frame.pack(fill="x", pady=1)
             ctk.CTkLabel(frame, text=part, width=200, anchor="w").pack(side="left")
-            var = ctk.StringVar(value=str(qty_total))
+            var = ctk.StringVar(value=str(remaining))
             entry = ctk.CTkEntry(frame, textvariable=var, width=80)
             entry.pack(side="left", padx=5)
             lbl = ctk.CTkLabel(frame, text=str(remaining), width=80)
@@ -472,13 +482,18 @@ class AdminWindow(ctk.CTk):
         self, rowid: int, part: str, var: ctk.StringVar, label: ctk.CTkLabel
     ) -> None:
         try:
-            new_qty = int(var.get())
+            new_remaining = int(var.get())
         except ValueError:
+            messagebox.showwarning("Invalid value", "Enter a numeric quantity")
             return
-        self.dm.update_row("waybill_lines", rowid, {"qty_total": new_qty})
+        if new_remaining < 0:
+            messagebox.showwarning("Invalid value", "Quantity cannot be negative")
+            new_remaining = 0
         scans = self.dm.fetch_scans(self.selected_waybill or "")
-        remaining = new_qty - scans.get(part, 0)
-        label.configure(text=str(max(remaining, 0)))
+        scanned = scans.get(part, 0)
+        new_total = scanned + max(new_remaining, 0)
+        self.dm.update_row("waybill_lines", rowid, {"qty_total": new_total})
+        label.configure(text=str(new_remaining))
         self._refresh_waybill_list()
 
     def _load_summary(self) -> None:
