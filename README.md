@@ -54,6 +54,9 @@ Administrators can load these mappings from a CSV file:
    - `qty`
    - `description`
 
+Part lookups read from the `part_identifiers` table. A CSV file is used only if
+one is supplied when launching the scanner interface.
+
 ## Database Viewer
 
 The **Admin** window now includes a *Database Viewer* tab. It lists all tables

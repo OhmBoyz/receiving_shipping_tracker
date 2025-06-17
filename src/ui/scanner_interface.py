@@ -19,8 +19,7 @@ from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 from src.logic.scanning import Line, ScannerLogic
 
-#DB_PATH = "receiving_tracker.db"
-PART_IDENTIFIERS_CSV = "data/part_identifiers.csv"
+PART_IDENTIFIERS_CSV = "data/part_ids.csv"
 
 logger = logging.getLogger(__name__)
 
