@@ -64,3 +64,11 @@ CREATE TABLE IF NOT EXISTS scan_summary (
     FOREIGN KEY(session_id) REFERENCES scan_sessions(session_id),
     FOREIGN KEY(user_id) REFERENCES users(user_id)
 );
+
+-- terminated waybills
+CREATE TABLE IF NOT EXISTS terminated_waybills (
+    waybill_number TEXT PRIMARY KEY,
+    terminated_at TEXT NOT NULL,
+    user_id INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
