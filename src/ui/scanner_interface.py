@@ -107,7 +107,7 @@ class ShipperWindow(ctk.CTk):
             except Exception:
                 pass
 
-        ctk.CTkLabel(self, text="Today's Waybills:").grid(row=0, column=0, pady=5, sticky="w")
+        ctk.CTkLabel(self, text="Today's Waybills:").grid(row=0, column=0, sticky="e", padx=(10, 5), pady=5)
         today_menu = ctk.CTkOptionMenu(
             self,
             values=self.today_waybills,
@@ -115,13 +115,13 @@ class ShipperWindow(ctk.CTk):
             command=self.load_waybill,
             width=200,
         )
-        today_menu.grid(row=1, column=0)
+        today_menu.grid(row=0, column=1, sticky="w", pady=5)
         self.today_menu = today_menu
         if not self.today_waybills:
             self.waybill_var.set("")
             self.today_menu.configure(values=[])
 
-        ctk.CTkLabel(self, text="Older/Incomplete:").grid(row=0, column=1, pady=5, sticky="w")
+        ctk.CTkLabel(self, text="Older/Incomplete:").grid(row=1, column=0, sticky="e", padx=(10, 5), pady=5)
         other_menu = ctk.CTkOptionMenu(
             self,
             values=self.other_waybills,
@@ -129,17 +129,17 @@ class ShipperWindow(ctk.CTk):
             command=self.load_waybill,
             width=200,
         )
-        other_menu.grid(row=1, column=1)
+        other_menu.grid(row=1, column=1, sticky="w", pady=5)
         self.other_menu = other_menu
 
         self.list_status = ctk.CTkLabel(
             self,
             text="Today's waybills" if self.today_waybills else "Incomplete waybills",
         )
-        self.list_status.grid(row=2, column=0, columnspan=2, pady=(0, 5))
+        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=2, column=0, pady=(0,5))
+        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=2, column=1, pady=(0,5))
 
-        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=3, column=0, pady=(0,5))
-        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=3, column=1, pady=(0,5))
+        self.list_status.grid(row=3, column=0, columnspan=2, pady=(0, 5))
 
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
@@ -328,7 +328,12 @@ class ShipperWindow(ctk.CTk):
         self._load_list(self.today_waybills, "Today's waybills")
 
     def _load_all_incomplete(self) -> None:
-        self._load_list(self.dm.fetch_incomplete_waybills(), "Incomplete waybills")
+        incompletes = self.dm.fetch_incomplete_waybills()
+        import_dates = self.dm.get_waybill_import_dates()
+        today = datetime.utcnow().date()
+        target = _last_working_day(today)
+        old = [wb for wb in incompletes if import_dates.get(wb) != target]
+        self._load_list(old, "Incomplete waybills")
 
     def load_bo_report(self, filepath: str) -> None:
         """Load the BO Excel file for later use."""
