@@ -65,11 +65,21 @@ class ShipperWindow(ctk.CTk):
                 pass
         ctk.set_appearance_mode(APPEARANCE_MODE)
 
-        today = datetime.utcnow().date().isoformat()
+        today = datetime.utcnow().date()
         all_wbs = self._fetch_waybills(None)
         dates = self.dm.get_waybill_dates()
-        self.today_waybills = [wb for wb in all_wbs if dates.get(wb) == today]
-        self.other_waybills = [wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills]
+        self.today_waybills = []
+        for wb in all_wbs:
+            date_str = dates.get(wb)
+            try:
+                date = datetime.fromisoformat(date_str).date() if date_str else None
+            except Exception:
+                date = None
+            if date == today:
+                self.today_waybills.append(wb)
+        self.other_waybills = [
+            wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills
+        ]
         self.waybills = self.today_waybills + self.other_waybills
         if not self.today_waybills and not self.other_waybills:
             messagebox.showinfo("Info", "No active waybills in database")
@@ -81,25 +91,26 @@ class ShipperWindow(ctk.CTk):
         if hasattr(self, "columnconfigure"):
             try:
                 self.columnconfigure(0, weight=1)
+                self.columnconfigure(1, weight=1)
                 self.rowconfigure(3, weight=1)
             except Exception:
                 pass
 
         ctk.CTkLabel(self, text="Today's Waybills:").grid(row=0, column=0, pady=5, sticky="w")
         today_menu = ctk.CTkOptionMenu(self, values=self.today_waybills, variable=self.waybill_var, command=self.load_waybill)
-        today_menu.grid(row=1, column=0, sticky="w")
+        today_menu.grid(row=1, column=0, sticky="ew")
         self.today_menu = today_menu
 
         ctk.CTkLabel(self, text="Older/Incomplete:").grid(row=0, column=1, pady=5, sticky="w")
         other_menu = ctk.CTkOptionMenu(self, values=self.other_waybills, variable=self.waybill_var, command=self.load_waybill)
-        other_menu.grid(row=1, column=1, sticky="w")
+        other_menu.grid(row=1, column=1, sticky="ew")
         self.other_menu = other_menu
 
-        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=2, column=0, pady=(0,5), sticky="w")
-        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=2, column=1, pady=(0,5), sticky="w")
+        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=2, column=0, pady=(0,5), sticky="ew")
+        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=2, column=1, pady=(0,5), sticky="ew")
 
         self.main_frame = ctk.CTkFrame(self)
-        self.main_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
+        self.main_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
         if hasattr(self.main_frame, "grid_columnconfigure"):
             try:
                 self.main_frame.grid_columnconfigure(0, weight=3)
@@ -135,6 +146,7 @@ class ShipperWindow(ctk.CTk):
         self.last_entries: List[str] = []
         self.history_box = ctk.CTkTextbox(self.sidebar_frame, width=200, height=150)
         self.history_box.pack(fill="both", pady=(5, 5))
+        self.history_box.configure(state="disabled")
 
         controls = ctk.CTkFrame(self.main_frame)
         controls.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
@@ -178,14 +190,24 @@ class ShipperWindow(ctk.CTk):
         return self.dm.fetch_waybills(date)
 
     def _show_all_waybills(self) -> None:
-        today = datetime.utcnow().date().isoformat()
+        today = datetime.utcnow().date()
         all_wbs = self._fetch_waybills(None)
         if not all_wbs:
             messagebox.showinfo("Info", "No active waybills in database")
             return
         dates = self.dm.get_waybill_dates()
-        self.today_waybills = [wb for wb in all_wbs if dates.get(wb) == today]
-        self.other_waybills = [wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills]
+        self.today_waybills = []
+        for wb in all_wbs:
+            date_str = dates.get(wb)
+            try:
+                date = datetime.fromisoformat(date_str).date() if date_str else None
+            except Exception:
+                date = None
+            if date == today:
+                self.today_waybills.append(wb)
+        self.other_waybills = [
+            wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills
+        ]
         self.waybills = self.today_waybills + self.other_waybills
         self.today_menu.configure(values=self.today_waybills)
         self.other_menu.configure(values=self.other_waybills)
@@ -195,6 +217,7 @@ class ShipperWindow(ctk.CTk):
             self.waybill_var.set(self.other_waybills[0])
         if self.waybill_var.get():
             self.load_waybill(self.waybill_var.get())
+        self.refresh_progress_table()
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
         return self.dm.fetch_scans(waybill)
@@ -223,14 +246,16 @@ class ShipperWindow(ctk.CTk):
         dates = self.dm.get_waybill_dates()
         today = datetime.utcnow().date()
         for row_idx, (waybill, total, remaining) in enumerate(rows, start=1):
-            date = dates.get(waybill, "")
+            date_str = dates.get(waybill, "")
+            try:
+                parsed = datetime.fromisoformat(date_str).date() if date_str else None
+            except Exception:
+                parsed = None
             color = (
-                "orange"
-                if date and datetime.fromisoformat(date).date() < today and remaining > 0
-                else None
+                "orange" if parsed and parsed < today and remaining > 0 else None
             )
             kwargs = dict(
-                text=f"{waybill} ({date})", width=120, anchor="w", font=cell_font
+                text=f"{waybill} ({date_str})", width=120, anchor="w", font=cell_font
             )
             if color:
                 kwargs["text_color"] = color
@@ -285,7 +310,9 @@ class ShipperWindow(ctk.CTk):
         messagebox.showinfo("Waybill finished", "Scan summary saved")
         self.last_entries.clear()
         try:
+            self.history_box.configure(state="normal")
             self.history_box.delete("1.0", "end")
+            self.history_box.configure(state="disabled")
         except Exception:
             pass
         self.destroy()
@@ -526,9 +553,11 @@ class ShipperWindow(ctk.CTk):
         entry = f"{timestamp} - {part} x{qty} -> {alloc_text}"
         self.last_entries.append(entry)
         self.last_entries = self.last_entries[-10:]
+        self.history_box.configure(state="normal")
         self.history_box.delete("1.0", "end")
         self.history_box.insert("end", "\n".join(self.last_entries))
         self.history_box.see("end")
+        self.history_box.configure(state="disabled")
 
     def process_scan(self, event=None) -> None:
         raw = self.scan_var.get().strip()
