@@ -61,7 +61,8 @@ class ShipperWindow(ctk.CTk):
         self.geometry("900x600")
         ctk.set_appearance_mode(APPEARANCE_MODE)
 
-        self.waybills = self._fetch_waybills()
+        today = datetime.utcnow().date().isoformat()
+        self.waybills = self._fetch_waybills(today)
         if not self.waybills:
             messagebox.showinfo("Info", "No active waybills in database")
             self.destroy()
@@ -71,6 +72,10 @@ class ShipperWindow(ctk.CTk):
         ctk.CTkLabel(self, text="Select Waybill:").pack(pady=5)
         menu = ctk.CTkOptionMenu(self, values=self.waybills, variable=self.waybill_var, command=self.load_waybill)
         menu.pack()
+        self.waybill_menu = menu
+
+        show_all_btn = ctk.CTkButton(self, text="Show All Waybills", command=self._show_all_waybills)
+        show_all_btn.pack(pady=(0, 5))
 
         self.content_frame = ctk.CTkFrame(self)
         self.content_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -140,8 +145,17 @@ class ShipperWindow(ctk.CTk):
     def _get_session(self, waybill: str) -> int:
         return self.dm.create_session(self.user_id, waybill)
 
-    def _fetch_waybills(self) -> List[str]:
-        return self.dm.fetch_waybills()
+    def _fetch_waybills(self, date: str | None = None) -> List[str]:
+        return self.dm.fetch_waybills(date)
+
+    def _show_all_waybills(self) -> None:
+        self.waybills = self._fetch_waybills(None)
+        if not self.waybills:
+            messagebox.showinfo("Info", "No active waybills in database")
+            return
+        self.waybill_menu.configure(values=self.waybills)
+        self.waybill_var.set(self.waybills[0])
+        self.load_waybill(self.waybill_var.get())
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
         return self.dm.fetch_scans(waybill)
@@ -165,10 +179,16 @@ class ShipperWindow(ctk.CTk):
             ctk.CTkLabel(headers, text=text, width=width).pack(side="left")
 
         rows = self._get_waybill_progress()
+        dates = self.dm.get_waybill_dates()
+        today = datetime.utcnow().date()
         for waybill, total, remaining in rows:
             frame = ctk.CTkFrame(self.progress_frame)
             frame.pack(fill="x", pady=1)
-            ctk.CTkLabel(frame, text=waybill, width=120, anchor="w").pack(side="left")
+            date = dates.get(waybill, "")
+            lbl = ctk.CTkLabel(frame, text=f"{waybill} ({date})", width=120, anchor="w")
+            if date and datetime.fromisoformat(date).date() < today and remaining > 0:
+                lbl.configure(text_color="orange")
+            lbl.pack(side="left")
             ctk.CTkLabel(frame, text=str(total), width=80).pack(side="left")
             ctk.CTkLabel(frame, text=str(remaining), width=80).pack(side="left")
             pb = ctk.CTkProgressBar(frame, width=300)

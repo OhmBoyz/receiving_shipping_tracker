@@ -4,20 +4,24 @@ import types
 import pytest
 
 
+from datetime import datetime
+
+
 def setup_waybill(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
+    today = datetime.utcnow().date().isoformat()
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        " VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '2024-01-01')"
+        f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}')"
     )
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        " VALUES ('WB1', 'P1', 10, 'DRV-RM', '', '', 0, '2024-01-01')"
+        f" VALUES ('WB1', 'P1', 10, 'DRV-RM', '', '', 0, '{today}')"
     )
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
-        " VALUES ('WB2', 'P1', 5, 'DRV-AMO', '', '', 0, '2024-01-01')"
+        f" VALUES ('WB2', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}')"
     )
     conn.commit()
     conn.close()

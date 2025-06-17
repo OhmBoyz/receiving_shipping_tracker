@@ -101,6 +101,7 @@ These tables together:
 
 ### For SHIPPER
 - Minimal clicks
+- Waybill list filtered to today's date with a **Show All Waybills** option
 - Manual part number input allowed
 - Quantity input before scanning (default = 1, resets after each scan)
 - Display part info after scan

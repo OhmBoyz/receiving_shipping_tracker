@@ -60,3 +60,8 @@ The **Admin** window now includes a *Database Viewer* tab. It lists all tables
 in the SQLite database and lets you inspect and edit their contents. Selecting a
 table shows its rows with **Edit** and **Delete** actions. Edits and deletions
 are wrapped in a transaction so you can cancel changes before committing.
+
+## Today's Waybills
+
+The shipper interface now lists only the waybills dated today when it starts.
+Click **Show All Waybills** to display previous days as well.

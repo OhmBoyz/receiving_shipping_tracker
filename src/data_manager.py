@@ -192,14 +192,30 @@ class DataManager:
         logger.info("Waybill %s terminated by user %s", waybill, user_id)
 
     # --- Waybill / scanning queries ------------------------------------
-    def fetch_waybills(self) -> List[str]:
+    def fetch_waybills(self, date: str | None = None) -> List[str]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute(
+            query = (
                 "SELECT DISTINCT waybill_number FROM waybill_lines "
                 "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills)"
             )
+            params: list[str] = []
+            if date:
+                query += " AND date=?"
+                params.append(date)
+            cur.execute(query, params)
             rows = [r[0] for r in cur.fetchall()]
+        return rows
+
+    def get_waybill_dates(self) -> Dict[str, str]:
+        """Return mapping of active waybills to their reception date."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT DISTINCT waybill_number, date FROM waybill_lines "
+                "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills)"
+            )
+            rows = {row[0]: row[1] for row in cur.fetchall()}
         return rows
 
     def fetch_scans(self, waybill: str) -> Dict[str, int]:
