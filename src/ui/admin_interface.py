@@ -478,7 +478,7 @@ class AdminWindow(ctk.CTk):
         header.pack(fill="x")
         for text, width in [
             ("Part", 200),
-            ("Remaining", 80),
+            ("Total Qty", 80),
             ("Remaining", 80),
         ]:
             ctk.CTkLabel(header, text=text, width=width).pack(side="left")
@@ -490,20 +490,20 @@ class AdminWindow(ctk.CTk):
             frame = ctk.CTkFrame(self.wb_table)
             frame.pack(fill="x", pady=1)
             ctk.CTkLabel(frame, text=part, width=200, anchor="w").pack(side="left")
+            qty_lbl = ctk.CTkLabel(frame, text=str(qty_total), width=80)
+            qty_lbl.pack(side="left")
             var = ctk.StringVar(value=str(remaining))
             entry = ctk.CTkEntry(frame, textvariable=var, width=80)
             entry.pack(side="left", padx=5)
-            lbl = ctk.CTkLabel(frame, text=str(remaining), width=80)
-            lbl.pack(side="left")
             entry.bind(
                 "<Return>",
-                lambda e, rid=rowid, p=part, v=var, lb=lbl: self._update_qty(rid, p, v, lb),
+                lambda e, rid=rowid, p=part, v=var, lb=qty_lbl: self._update_qty(rid, p, v, lb),
             )
             entry.bind(
                 "<FocusOut>",
-                lambda e, rid=rowid, p=part, v=var, lb=lbl: self._update_qty(rid, p, v, lb),
+                lambda e, rid=rowid, p=part, v=var, lb=qty_lbl: self._update_qty(rid, p, v, lb),
             )
-            self._wb_row_widgets[rowid] = (var, lbl, part)
+            self._wb_row_widgets[rowid] = (var, qty_lbl, part)
 
     def _update_qty(
         self, rowid: int, part: str, var: ctk.StringVar, label: ctk.CTkLabel
@@ -520,7 +520,7 @@ class AdminWindow(ctk.CTk):
         scanned = scans.get(part, 0)
         new_total = scanned + max(new_remaining, 0)
         self.dm.update_row("waybill_lines", rowid, {"qty_total": new_total})
-        label.configure(text=str(new_remaining))
+        label.configure(text=str(new_total))
         self._refresh_waybill_list()
 
     def _load_summary(self) -> None:

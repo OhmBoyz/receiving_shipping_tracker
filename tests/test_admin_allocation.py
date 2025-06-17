@@ -62,7 +62,7 @@ def test_load_waybill_table_allocates(temp_db, monkeypatch):
 
     values = [v.get() for v, _, _ in sorted(win._wb_row_widgets.values(), key=lambda x: x[2])]
     assert values == ["0", "9"]
-    assert labels[:3] == ["Part", "Remaining", "Remaining"]
+    assert labels[:3] == ["Part", "Total Qty", "Remaining"]
 
 
 def test_edit_waybill_allocates(monkeypatch, temp_db):
