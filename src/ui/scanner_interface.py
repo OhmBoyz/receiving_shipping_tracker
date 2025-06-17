@@ -103,10 +103,6 @@ class ShipperWindow(ctk.CTk):
         self._label_bg = self.amo_label.cget("fg_color")
 
         self.last_entry_var = ctk.StringVar(value="")
-        self.last_entry_label = ctk.CTkLabel(
-            self.alloc_frame, textvariable=self.last_entry_var, width=160
-        )
-        self.last_entry_label.pack(pady=(20, 5), fill="x")
 
         controls = ctk.CTkFrame(self)
         controls.pack(fill="x", pady=5)
@@ -130,6 +126,16 @@ class ShipperWindow(ctk.CTk):
             controls, text="End Session", command=self.manual_logout
         )
         logout_btn.pack(side="left", padx=(20, 0))
+
+        self.footer_frame = ctk.CTkFrame(self)
+        self.footer_frame.pack(fill="x")
+
+        self.last_entry_label = ctk.CTkLabel(
+            self.footer_frame,
+            textvariable=self.last_entry_var,
+            font=ctk.CTkFont(size=18, weight="bold"),
+        )
+        self.last_entry_label.pack(fill="x", pady=(5, 5))
 
         self.lines: List[Line] = []
         self.load_waybill(self.waybill_var.get())
