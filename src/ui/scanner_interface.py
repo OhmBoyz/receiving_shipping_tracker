@@ -141,7 +141,7 @@ class ShipperWindow(ctk.CTk):
         return self.dm.create_session(self.user_id, waybill)
 
     def _fetch_waybills(self) -> List[str]:
-        return self.dm.fetch_waybills()
+        return self.dm.fetch_active_waybills()
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
         return self.dm.fetch_scans(waybill)
@@ -202,6 +202,7 @@ class ShipperWindow(ctk.CTk):
 
     def _finish_session(self) -> None:
         self.record_partial_summary()
+        self.dm.mark_waybill_completed(self.waybill_var.get())
         messagebox.showinfo("Waybill finished", "Scan summary saved")
         self.destroy()
 

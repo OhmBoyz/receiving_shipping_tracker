@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .config import DB_PATH
+
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:
@@ -175,12 +179,24 @@ class DataManager:
             conn.commit()
 
     # --- Waybill / scanning queries ------------------------------------
-    def fetch_waybills(self) -> List[str]:
+    def fetch_waybills(self, active_only: bool = True) -> List[str]:
+        """Return distinct waybill numbers.
+
+        If ``active_only`` is ``True`` (default), only waybills with
+        ``status='ACTIVE'`` are returned.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
+            query = "SELECT DISTINCT waybill_number FROM waybill_lines"
+            if active_only:
+                query += " WHERE status='ACTIVE'"
+            cur.execute(query)
             rows = [r[0] for r in cur.fetchall()]
         return rows
+
+    def fetch_active_waybills(self) -> List[str]:
+        """Convenience wrapper for ``fetch_waybills`` with ``active_only``."""
+        return self.fetch_waybills(active_only=True)
 
     def fetch_scans(self, waybill: str) -> Dict[str, int]:
         with sqlite3.connect(self.db_path) as conn:
@@ -196,7 +212,7 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT waybill_number, SUM(qty_total) FROM waybill_lines GROUP BY waybill_number"
+                "SELECT waybill_number, SUM(qty_total) FROM waybill_lines WHERE status='ACTIVE' GROUP BY waybill_number"
             )
             totals = {row[0]: int(row[1]) for row in cur.fetchall()}
             cur.execute(
@@ -215,11 +231,22 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) ORDER BY part_number",
+                "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) AND status='ACTIVE' ORDER BY part_number",
                 (waybill,),
             )
             rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
         return rows
+
+    def mark_waybill_completed(self, waybill: str) -> None:
+        """Set ``status`` to ``COMPLETED`` for the given waybill."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE waybill_lines SET status='COMPLETED' WHERE UPPER(waybill_number)=UPPER(?)",
+                (waybill,),
+            )
+            conn.commit()
+        logger.info("Waybill %s marked as completed", waybill)
 
     def insert_scan_event(
         self,
