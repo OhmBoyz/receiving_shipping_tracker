@@ -25,6 +25,12 @@ def add_waybill_number_column(db_path: str = "receiving_tracker.db") -> None:
         )
         conn.commit()
 
+    cur.execute("PRAGMA table_info(waybill_lines)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "import_date" not in columns:
+        cur.execute("ALTER TABLE waybill_lines ADD COLUMN import_date TEXT NOT NULL DEFAULT (DATE('now'))")
+        conn.commit()
+
     conn.close()
 
 
