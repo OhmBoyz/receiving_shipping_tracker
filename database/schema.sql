@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- part_identifiers
 CREATE TABLE IF NOT EXISTS part_identifiers (
-    part_number TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_number TEXT NOT NULL,
     upc_code TEXT UNIQUE,
     qty TEXT,
     description TEXT
