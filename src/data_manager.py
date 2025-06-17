@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .config import DB_PATH
+
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:
@@ -174,11 +178,27 @@ class DataManager:
             cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
             conn.commit()
 
+    def mark_waybill_terminated(self, waybill: str, user_id: int) -> None:
+        """Record ``waybill`` termination by ``user_id`` with timestamp."""
+        terminated_at = datetime.utcnow().isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR REPLACE INTO terminated_waybills "
+                "(waybill_number, terminated_at, user_id) VALUES (?, ?, ?)",
+                (waybill, terminated_at, user_id),
+            )
+            conn.commit()
+        logger.info("Waybill %s terminated by user %s", waybill, user_id)
+
     # --- Waybill / scanning queries ------------------------------------
     def fetch_waybills(self) -> List[str]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute("SELECT DISTINCT waybill_number FROM waybill_lines")
+            cur.execute(
+                "SELECT DISTINCT waybill_number FROM waybill_lines "
+                "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills)"
+            )
             rows = [r[0] for r in cur.fetchall()]
         return rows
 
@@ -196,11 +216,15 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT waybill_number, SUM(qty_total) FROM waybill_lines GROUP BY waybill_number"
+                "SELECT waybill_number, SUM(qty_total) FROM waybill_lines "
+                "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills) "
+                "GROUP BY waybill_number"
             )
             totals = {row[0]: int(row[1]) for row in cur.fetchall()}
             cur.execute(
-                "SELECT waybill_number, SUM(scanned_qty) FROM scan_events GROUP BY waybill_number"
+                "SELECT waybill_number, SUM(scanned_qty) FROM scan_events "
+                "WHERE waybill_number NOT IN (SELECT waybill_number FROM terminated_waybills) "
+                "GROUP BY waybill_number"
             )
             scanned = {row[0]: int(row[1]) for row in cur.fetchall()}
         progress = []

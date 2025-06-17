@@ -115,11 +115,13 @@ class AdminWindow(ctk.CTk):
         self.tab_upload = tabs.add("Waybill Upload")
         self.tab_users = tabs.add("User Management")
         self.tab_summary = tabs.add("Scan Summaries")
+        self.tab_waybill = tabs.add("Waybill Manager")
         self.tab_db = tabs.add("Database Viewer")
 
         self._build_upload_tab()
         self._build_user_tab()
         self._build_summary_tab()
+        self._build_waybill_tab()
         self._build_db_tab()
 
     # ---------------------------- Waybill Upload ----------------------------
@@ -327,6 +329,106 @@ class AdminWindow(ctk.CTk):
             self.tree.column(col, width=100, anchor="center")
         self.tree.pack(fill="both", expand=True, padx=10, pady=5)
         self.summary_rows: List[tuple] = []
+
+    # --------------------------- Waybill Manager ---------------------------
+    def _build_waybill_tab(self) -> None:
+        self.dm = DataManager(self.db_path)
+        self.wb_list = ctk.CTkScrollableFrame(self.tab_waybill, width=200)
+        self.wb_list.pack(side="left", fill="y", padx=10, pady=10)
+        self.wb_buttons: List[ctk.CTkButton] = []
+
+        self.wb_actions = ctk.CTkFrame(self.tab_waybill)
+        self.wb_actions.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        self.wb_edit_btn = ctk.CTkButton(
+            self.wb_actions,
+            text="Edit",
+            command=self._edit_selected_waybill,
+            state="disabled",
+        )
+        self.wb_edit_btn.pack(pady=5)
+
+        self.wb_term_btn = ctk.CTkButton(
+            self.wb_actions,
+            text="Terminate",
+            command=self._terminate_selected_waybill,
+            state="disabled",
+        )
+        self.wb_term_btn.pack(pady=5)
+
+        self.selected_waybill: Optional[str] = None
+        self._refresh_waybill_list()
+
+    def _refresh_waybill_list(self) -> None:
+        for widget in self.wb_list.winfo_children():
+            widget.destroy()
+        self.wb_buttons = []
+        progress = self.dm.get_waybill_progress()
+        for wb, total, remaining in progress:
+            text = f"{wb} ({total-remaining}/{total})"
+            btn = ctk.CTkButton(
+                self.wb_list,
+                text=text,
+                width=180,
+                command=lambda n=wb: self._select_waybill(n),
+            )
+            btn.pack(fill="x", pady=2)
+            self.wb_buttons.append(btn)
+
+    def _select_waybill(self, wb: str) -> None:
+        self.selected_waybill = wb
+        self.wb_edit_btn.configure(state="normal")
+        self.wb_term_btn.configure(state="normal")
+
+    def _edit_selected_waybill(self) -> None:
+        if not self.selected_waybill:
+            return
+        self._edit_waybill(self.selected_waybill)
+
+    def _terminate_selected_waybill(self) -> None:
+        if not self.selected_waybill:
+            return
+        self._terminate_waybill(self.selected_waybill)
+
+    def _edit_waybill(self, waybill: str) -> None:
+        lines = self.dm.get_waybill_lines(waybill)
+        if not lines:
+            return
+        win = ctk.CTkToplevel(self)
+        vars: List[ctk.StringVar] = []
+        for i, line in enumerate(lines):
+            ctk.CTkLabel(win, text=f"{line[1]} {line[3]}").grid(row=i, column=0, sticky="e")
+            var = ctk.StringVar(value=str(line[2]))
+            vars.append(var)
+            ctk.CTkEntry(win, textvariable=var, width=80).grid(row=i, column=1, padx=5, pady=2)
+
+        def save() -> None:
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("BEGIN")
+            for ln, var in zip(lines, vars):
+                try:
+                    qty = int(var.get())
+                except ValueError:
+                    qty = ln[2]
+                self.dm.update_row("waybill_lines", ln[0], {"qty_total": qty}, conn)
+            conn.commit()
+            conn.close()
+            win.destroy()
+            logger.info("Waybill %s lines edited", waybill)
+            self._refresh_waybill_list()
+
+        def cancel() -> None:
+            win.destroy()
+
+        btn_frame = ctk.CTkFrame(win)
+        btn_frame.grid(row=len(lines), column=0, columnspan=2, pady=10)
+        ctk.CTkButton(btn_frame, text="Save", command=save).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="Cancel", command=cancel).pack(side="left", padx=5)
+
+    def _terminate_waybill(self, waybill: str) -> None:
+        self.dm.mark_waybill_terminated(waybill, 0)
+        logger.info("Waybill %s marked terminated", waybill)
+        self._refresh_waybill_list()
 
     def _load_summary(self) -> None:
         user_name = self.summary_user_var.get()

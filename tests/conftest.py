@@ -34,6 +34,8 @@ def dummy_gui(monkeypatch):
             pass
         def pack(self, *a, **kw):
             pass
+        def grid(self, *a, **kw):
+            pass
         def bind(self, *a, **kw):
             pass
         def configure(self, *a, **kw):
@@ -69,11 +71,17 @@ def dummy_gui(monkeypatch):
         def __init__(self, *a, **kw):
             pass
 
+    class DummyTabview(DummyWidget):
+        def add(self, name):
+            return DummyWidget()
+
     dummy.CTk = DummyCTk # type: ignore[attr-defined]
     dummy.CTkLabel = DummyWidget # type: ignore[attr-defined]
     dummy.CTkEntry = DummyWidget # type: ignore[attr-defined]
     dummy.CTkOptionMenu = DummyWidget # type: ignore[attr-defined]
     dummy.CTkFrame = DummyWidget # type: ignore[attr-defined]
+    dummy.CTkScrollableFrame = DummyWidget # type: ignore[attr-defined]
+    dummy.CTkTabview = DummyTabview # type: ignore[attr-defined]
     dummy.CTkProgressBar = DummyWidget # type: ignore[attr-defined]
     dummy.CTkButton = DummyWidget # type: ignore[attr-defined]
     dummy.CTkFont = DummyFont # type: ignore[attr-defined]
@@ -82,6 +90,10 @@ def dummy_gui(monkeypatch):
     dummy.set_appearance_mode = lambda *a, **kw: None # type: ignore[attr-defined]
 
     monkeypatch.setitem(sys.modules, 'customtkinter', dummy)
+
+    ttk_dummy = types.ModuleType('tkinter.ttk')
+    ttk_dummy.Treeview = DummyWidget
+    monkeypatch.setitem(sys.modules, 'tkinter.ttk', ttk_dummy)
 
     mb = types.SimpleNamespace(
         showinfo=lambda *a, **kw: None,

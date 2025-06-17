@@ -419,6 +419,7 @@ class ShipperWindow(ctk.CTk):
         self.qty_var.set(1)
 
         if all(line.remaining() == 0 for line in self.lines):
+            self.dm.mark_waybill_terminated(self.waybill_var.get(), self.user_id)
             all_done = all(rem == 0 for _, _, rem in self._get_waybill_progress())
             if all_done:
                 if messagebox.askyesno(
