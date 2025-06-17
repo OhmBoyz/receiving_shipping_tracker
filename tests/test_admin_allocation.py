@@ -60,7 +60,7 @@ def test_load_waybill_table_allocates(temp_db, monkeypatch):
     win = patch_window(monkeypatch, temp_db)
     win._load_waybill_table("WB1")
 
-    values = [v.get() for v, _, _ in sorted(win._wb_row_widgets.values(), key=lambda x: x[2])]
+    values = [v.get() for v, _, _, _ in sorted(win._wb_row_widgets.values(), key=lambda x: x[2])]
     assert values == ["0", "9"]
     assert labels[:3] == ["Part", "Total Qty", "Remaining"]
 
@@ -98,3 +98,42 @@ def test_edit_waybill_allocates(monkeypatch, temp_db):
 
     values = [var.get() for var in entries]
     assert values == ["0", "9"]
+
+
+def test_update_qty_skipped_without_edit_mode(temp_db, monkeypatch):
+    from src.ui import admin_interface
+
+    setup_data(temp_db)
+
+    win = patch_window(monkeypatch, temp_db)
+    win._select_waybill("WB1")
+
+    rows = win.dm.get_waybill_lines("WB1")
+    rowid = rows[1][0]
+    var, lbl, part, _ = win._wb_row_widgets[rowid]
+    var.set("8")
+
+    win._update_qty(rowid, part, var, lbl)
+
+    new_rows = win.dm.get_waybill_lines("WB1")
+    assert next(r[2] for r in new_rows if r[0] == rowid) == 10
+
+
+def test_update_qty_updates_in_edit_mode(temp_db, monkeypatch):
+    from src.ui import admin_interface
+
+    setup_data(temp_db)
+
+    win = patch_window(monkeypatch, temp_db)
+    win._select_waybill("WB1")
+    win._toggle_edit_mode()
+
+    rows = win.dm.get_waybill_lines("WB1")
+    rowid = rows[1][0]
+    var, lbl, part, _ = win._wb_row_widgets[rowid]
+    var.set("8")
+
+    win._update_qty(rowid, part, var, lbl)
+
+    new_rows = win.dm.get_waybill_lines("WB1")
+    assert next(r[2] for r in new_rows if r[0] == rowid) == 9
