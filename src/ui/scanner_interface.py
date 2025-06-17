@@ -63,6 +63,8 @@ class ShipperWindow(ctk.CTk):
         today = datetime.utcnow().date().isoformat()
         self.waybills = self._fetch_waybills(today)
         if not self.waybills:
+            self.waybills = self._fetch_waybills(None)
+        if not self.waybills:
             messagebox.showinfo("Info", "No active waybills in database")
             self.destroy()
             return
@@ -459,6 +461,8 @@ def start_shipper_interface(
 ) -> None:
     """Launch the shipper interface for ``user_id``."""
     app = ShipperWindow(user_id, db_path, csv_path)
+    if not app.waybills:
+        return
     try:
         app.mainloop()
     finally:
