@@ -201,3 +201,26 @@ def test_manual_logout_ends_session(temp_db, monkeypatch):
     end_time = cur.fetchone()[0]
     conn.close()
     assert end_time is not None
+
+
+def test_start_interface_with_blank_date(temp_db, monkeypatch):
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date) "
+        "VALUES ('WBX', 'P1', 1, 'DRV-AMO', '', '', 0, '')"
+    )
+    conn.commit()
+    conn.close()
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(
+        scanner_interface.ShipperWindow,
+        'mainloop',
+        lambda self: None,
+        raising=False,
+    )
+
+    # Should not raise TclError when waybill date missing
+    scanner_interface.start_shipper_interface(1, temp_db)
