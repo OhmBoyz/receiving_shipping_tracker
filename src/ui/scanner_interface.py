@@ -66,15 +66,18 @@ class ShipperWindow(ctk.CTk):
         ctk.set_appearance_mode(APPEARANCE_MODE)
 
         today = datetime.utcnow().date().isoformat()
-        self.waybills = self._fetch_waybills(today)
-        if not self.waybills:
-            self.waybills = self._fetch_waybills(None)
-        if not self.waybills:
+        all_wbs = self._fetch_waybills(None)
+        dates = self.dm.get_waybill_dates()
+        self.today_waybills = [wb for wb in all_wbs if dates.get(wb) == today]
+        self.other_waybills = [wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills]
+        self.waybills = self.today_waybills + self.other_waybills
+        if not self.today_waybills and not self.other_waybills:
             messagebox.showinfo("Info", "No active waybills in database")
             self.destroy()
             return
 
-        self.waybill_var = ctk.StringVar(value=self.waybills[0])
+        default = self.today_waybills[0] if self.today_waybills else (self.other_waybills[0] if self.other_waybills else "")
+        self.waybill_var = ctk.StringVar(value=default)
         if hasattr(self, "columnconfigure"):
             try:
                 self.columnconfigure(0, weight=1)
@@ -82,13 +85,18 @@ class ShipperWindow(ctk.CTk):
             except Exception:
                 pass
 
-        ctk.CTkLabel(self, text="Select Waybill:").grid(row=0, column=0, pady=5, sticky="w")
-        menu = ctk.CTkOptionMenu(self, values=self.waybills, variable=self.waybill_var, command=self.load_waybill)
-        menu.grid(row=1, column=0, sticky="w")
-        self.waybill_menu = menu
+        ctk.CTkLabel(self, text="Today's Waybills:").grid(row=0, column=0, pady=5, sticky="w")
+        today_menu = ctk.CTkOptionMenu(self, values=self.today_waybills, variable=self.waybill_var, command=self.load_waybill)
+        today_menu.grid(row=1, column=0, sticky="w")
+        self.today_menu = today_menu
 
-        show_all_btn = ctk.CTkButton(self, text="Show All Waybills", command=self._show_all_waybills)
-        show_all_btn.grid(row=2, column=0, pady=(0, 5), sticky="w")
+        ctk.CTkLabel(self, text="Older/Incomplete:").grid(row=0, column=1, pady=5, sticky="w")
+        other_menu = ctk.CTkOptionMenu(self, values=self.other_waybills, variable=self.waybill_var, command=self.load_waybill)
+        other_menu.grid(row=1, column=1, sticky="w")
+        self.other_menu = other_menu
+
+        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=2, column=0, pady=(0,5), sticky="w")
+        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=2, column=1, pady=(0,5), sticky="w")
 
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
@@ -124,7 +132,9 @@ class ShipperWindow(ctk.CTk):
 
         self._label_bg = self.amo_label.cget("fg_color")
 
-        self.last_entry_var = ctk.StringVar(value="")
+        self.last_entries: List[str] = []
+        self.history_box = ctk.CTkTextbox(self.sidebar_frame, width=200, height=150)
+        self.history_box.pack(fill="both", pady=(5, 5))
 
         controls = ctk.CTkFrame(self.main_frame)
         controls.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
@@ -149,13 +159,6 @@ class ShipperWindow(ctk.CTk):
         )
         logout_btn.pack(side="left", padx=(20, 0))
 
-        self.last_entry_label = ctk.CTkLabel(
-            self.sidebar_frame,
-            textvariable=self.last_entry_var,
-            font=ctk.CTkFont(size=18, weight="bold"),
-        )
-        self.last_entry_label.pack(fill="x", pady=(5, 5))
-
         self.lines: List[Line] = []
         self.load_waybill(self.waybill_var.get())
 
@@ -175,13 +178,23 @@ class ShipperWindow(ctk.CTk):
         return self.dm.fetch_waybills(date)
 
     def _show_all_waybills(self) -> None:
-        self.waybills = self._fetch_waybills(None)
-        if not self.waybills:
+        today = datetime.utcnow().date().isoformat()
+        all_wbs = self._fetch_waybills(None)
+        if not all_wbs:
             messagebox.showinfo("Info", "No active waybills in database")
             return
-        self.waybill_menu.configure(values=self.waybills)
-        self.waybill_var.set(self.waybills[0])
-        self.load_waybill(self.waybill_var.get())
+        dates = self.dm.get_waybill_dates()
+        self.today_waybills = [wb for wb in all_wbs if dates.get(wb) == today]
+        self.other_waybills = [wb for wb in self.dm.fetch_incomplete_waybills() if wb not in self.today_waybills]
+        self.waybills = self.today_waybills + self.other_waybills
+        self.today_menu.configure(values=self.today_waybills)
+        self.other_menu.configure(values=self.other_waybills)
+        if self.today_waybills:
+            self.waybill_var.set(self.today_waybills[0])
+        elif self.other_waybills:
+            self.waybill_var.set(self.other_waybills[0])
+        if self.waybill_var.get():
+            self.load_waybill(self.waybill_var.get())
 
     def _fetch_scans(self, waybill: str) -> Dict[str, int]:
         return self.dm.fetch_scans(waybill)
@@ -211,15 +224,17 @@ class ShipperWindow(ctk.CTk):
         today = datetime.utcnow().date()
         for row_idx, (waybill, total, remaining) in enumerate(rows, start=1):
             date = dates.get(waybill, "")
-            lbl = ctk.CTkLabel(
-                self.progress_frame,
-                text=f"{waybill} ({date})",
-                width=120,
-                anchor="w",
-                font=cell_font,
+            color = (
+                "orange"
+                if date and datetime.fromisoformat(date).date() < today and remaining > 0
+                else None
             )
-            if date and datetime.fromisoformat(date).date() < today and remaining > 0:
-                lbl.configure(text_color="orange")
+            kwargs = dict(
+                text=f"{waybill} ({date})", width=120, anchor="w", font=cell_font
+            )
+            if color:
+                kwargs["text_color"] = color
+            lbl = ctk.CTkLabel(self.progress_frame, **kwargs)
             lbl.grid(row=row_idx, column=0, sticky="w", pady=1)
 
             ctk.CTkLabel(
@@ -235,6 +250,12 @@ class ShipperWindow(ctk.CTk):
             ratio = (total - remaining) / total if total else 0
             pb.set(ratio)
             pb.configure(progress_color=_color_from_ratio(ratio))
+
+    def _load_all_today(self) -> None:
+        self.load_waybills(self.today_waybills)
+
+    def _load_all_incomplete(self) -> None:
+        self.load_waybills(self.dm.fetch_incomplete_waybills())
 
     def load_bo_report(self, filepath: str) -> None:
         """Load the BO Excel file for later use."""
@@ -262,6 +283,11 @@ class ShipperWindow(ctk.CTk):
     def _finish_session(self) -> None:
         self.record_partial_summary()
         messagebox.showinfo("Waybill finished", "Scan summary saved")
+        self.last_entries.clear()
+        try:
+            self.history_box.delete("1.0", "end")
+        except Exception:
+            pass
         self.destroy()
 
     def manual_finish(self) -> None:
@@ -377,6 +403,75 @@ class ShipperWindow(ctk.CTk):
 
         self.scan_entry.focus_set()
 
+    def load_waybills(self, waybills: List[str]) -> None:
+        if not waybills:
+            return
+        if self.session_id is None:
+            self.session_id = self._get_session(waybills[0])
+        else:
+            self._update_session_waybill(waybills[0])
+        scans: Dict[str, int] = {}
+        for wb in waybills:
+            data = self._fetch_scans(wb)
+            for part, qty in data.items():
+                scans[part] = scans.get(part, 0) + qty
+
+        for widget in self.lines_frame.winfo_children():
+            widget.destroy()
+        self.lines = []
+
+        rows = self.dm.get_waybill_lines_multi(waybills)
+        for row in rows:
+            code = row[3]
+            friendly = SUBINV_MAP.get(code) or code
+            line = Line(row[0], row[1].upper(), int(row[2]), friendly, code)
+            self.lines.append(line)
+
+        part_groups: Dict[str, List[Line]] = {}
+        for line in self.lines:
+            part_groups.setdefault(line.part, []).append(line)
+        for part, lines in part_groups.items():
+            lines.sort(key=lambda line: 0 if "AMO" in line.subinv else 1)
+            remaining = scans.get(part, 0)
+            for ln in lines:
+                alloc = min(ln.qty_total, remaining)
+                ln.scanned = alloc
+                remaining -= alloc
+
+        headers = ctk.CTkFrame(self.lines_frame)
+        headers.pack(fill="x")
+        header_font = ctk.CTkFont(size=20, weight="bold")
+        cell_font = ctk.CTkFont(size=18)
+        for text, width in [
+            ("Part", 200),
+            ("Total", 80),
+            ("Progress", 300),
+            ("Remaining", 80),
+        ]:
+            ctk.CTkLabel(headers, text=text, width=width, font=header_font).pack(side="left")
+
+        for part, lines in part_groups.items():
+            row_frame = ctk.CTkFrame(self.lines_frame)
+            row_frame.pack(fill="x", pady=1)
+            ctk.CTkLabel(row_frame, text=part, width=200, anchor="w", font=cell_font).pack(side="left")
+
+            total_qty = sum(l.qty_total for l in lines)
+            ctk.CTkLabel(row_frame, text=str(total_qty), width=80, font=cell_font).pack(side="left")
+
+            pb = ctk.CTkProgressBar(row_frame, width=300)
+            pb.pack(side="left", padx=5)
+            rem_label = ctk.CTkLabel(row_frame, width=80, font=cell_font)
+            rem_label.pack(side="left")
+
+            for ln in lines:
+                ln.progress = pb  # type: ignore[attr-defined]
+                ln.rem_label = rem_label  # type: ignore[attr-defined]
+            self._update_line_widgets(lines[0])
+
+        self.refresh_progress_table()
+
+        self.scan_entry.focus_set()
+
     def _update_line_widgets(self, line: Line) -> None:
         group = [ln for ln in self.lines if ln.part == line.part]
         total_qty = sum(l.qty_total for l in group)
@@ -428,7 +523,12 @@ class ShipperWindow(ctk.CTk):
             alloc_parts.append(f"KANBAN {allocations['KANBAN']}")
         alloc_text = ", ".join(alloc_parts)
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.last_entry_var.set(f"{timestamp} - {part} x{qty} -> {alloc_text}")
+        entry = f"{timestamp} - {part} x{qty} -> {alloc_text}"
+        self.last_entries.append(entry)
+        self.last_entries = self.last_entries[-10:]
+        self.history_box.delete("1.0", "end")
+        self.history_box.insert("end", "\n".join(self.last_entries))
+        self.history_box.see("end")
 
     def process_scan(self, event=None) -> None:
         raw = self.scan_var.get().strip()

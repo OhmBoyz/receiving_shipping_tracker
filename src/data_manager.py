@@ -207,6 +207,11 @@ class DataManager:
             rows = [r[0] for r in cur.fetchall()]
         return rows
 
+    def fetch_incomplete_waybills(self) -> List[str]:
+        """Return active waybills that still have remaining quantity."""
+        progress = self.get_waybill_progress()
+        return [wb for wb, _, remaining in progress if remaining > 0]
+
     def get_waybill_dates(self) -> Dict[str, str]:
         """Return mapping of active waybills to their reception date."""
         with sqlite3.connect(self.db_path) as conn:
@@ -258,6 +263,21 @@ class DataManager:
                 "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) ORDER BY part_number",
                 (waybill,),
             )
+            rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
+        return rows
+
+    def get_waybill_lines_multi(self, waybills: Iterable[str]) -> List[Tuple[int, str, int, str]]:
+        """Return lines for all ``waybills``."""
+        ids = list(waybills)
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        query = (
+            f"SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE waybill_number IN ({placeholders}) ORDER BY waybill_number, part_number"
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(query, ids)
             rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
         return rows
 

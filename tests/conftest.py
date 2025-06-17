@@ -31,7 +31,7 @@ def dummy_gui(monkeypatch):
 
     class DummyWidget:
         def __init__(self, *a, **kw):
-            pass
+            self._text = ""
         def pack(self, *a, **kw):
             pass
         def grid(self, *a, **kw):
@@ -39,13 +39,22 @@ def dummy_gui(monkeypatch):
         def bind(self, *a, **kw):
             pass
         def configure(self, *a, **kw):
-            pass
+            if "text" in kw:
+                self._text = kw["text"]
         def set(self, *a, **kw):
             pass
         def destroy(self, *a, **kw):
             pass
         def cget(self, *a, **kw):
             return ""
+        def insert(self, index, text):
+            self._text += text
+        def delete(self, start, end=None):
+            self._text = ""
+        def get(self, start="1.0", end=None):
+            return self._text
+        def see(self, index):
+            pass
         def winfo_children(self):
             return []
         def focus_set(self):
@@ -81,6 +90,7 @@ def dummy_gui(monkeypatch):
     dummy.CTkOptionMenu = DummyWidget # type: ignore[attr-defined]
     dummy.CTkFrame = DummyWidget # type: ignore[attr-defined]
     dummy.CTkScrollableFrame = DummyWidget # type: ignore[attr-defined]
+    dummy.CTkTextbox = DummyWidget # type: ignore[attr-defined]
     dummy.CTkTabview = DummyTabview # type: ignore[attr-defined]
     dummy.CTkProgressBar = DummyWidget # type: ignore[attr-defined]
     dummy.CTkButton = DummyWidget # type: ignore[attr-defined]

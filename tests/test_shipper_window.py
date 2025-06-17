@@ -5,6 +5,7 @@ import pytest
 
 
 from datetime import datetime
+from src.data_manager import DataManager
 
 
 def setup_waybill(db_path):
@@ -224,3 +225,64 @@ def test_start_interface_with_blank_date(temp_db, monkeypatch):
 
     # Should not raise TclError when waybill date missing
     scanner_interface.start_shipper_interface(1, temp_db)
+
+
+def test_history_resets_between_sessions(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    win1 = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+    win1.qty_var.set(1)
+    win1.scan_var.set('P1')
+    win1.process_scan()
+    assert len(win1.last_entries) == 1
+
+    win2 = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+    assert win2.last_entries == []
+
+
+def test_data_manager_helpers(temp_db):
+    setup_waybill(temp_db)
+    dm = DataManager(temp_db)
+    progress = dm.get_waybill_progress()
+    incompletes = dm.fetch_incomplete_waybills()
+    assert incompletes == [row[0] for row in progress if row[2] > 0]
+    rows = dm.get_waybill_lines_multi(['WB1', 'WB2'])
+    assert len(rows) == 3
+
+
+def test_progress_table_highlighting(temp_db, monkeypatch):
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    old_date = '2024-01-01'
+    cur.execute("INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date) VALUES ('OLD1','P1',1,'DRV-AMO','','',0,?)", (old_date,))
+    cur.execute("INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date) VALUES ('OLD2','P1',1,'DRV-AMO','','',0,?)", (old_date,))
+    conn.commit()
+    conn.close()
+
+    from src.ui import scanner_interface
+
+    labels = []
+
+    class RecLabel:
+        def __init__(self, *a, **kw):
+            labels.append((kw.get('text'), kw.get('text_color')))
+        def grid(self, *a, **kw):
+            pass
+        def pack(self, *a, **kw):
+            pass
+        def cget(self, *a, **kw):
+            return ''
+        def configure(self, *a, **kw):
+            pass
+
+    monkeypatch.setattr(scanner_interface.ctk, 'CTkLabel', RecLabel)
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    orange = [c for t, c in labels if t and t.startswith('OLD')]
+    assert all(c == 'orange' for c in orange)
