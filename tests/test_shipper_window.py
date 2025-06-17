@@ -286,3 +286,68 @@ def test_progress_table_highlighting(temp_db, monkeypatch):
 
     orange = [c for t, c in labels if t and t.startswith('OLD')]
     assert all(c == 'orange' for c in orange)
+
+
+def test_today_menu_empty_and_status_label(temp_db, monkeypatch):
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    old_date = '2000-01-01'
+    cur.execute(
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date)"
+        " VALUES ('OLDWB', 'P1', 1, 'DRV-AMO', '', '', 0, ?)",
+        (old_date,),
+    )
+    conn.commit()
+    conn.close()
+
+    from src.ui import scanner_interface
+
+    class RecOptionMenu:
+        def __init__(self, *a, **kw):
+            self.values = kw.get('values', [])
+            self.variable = kw.get('variable')
+
+        def grid(self, *a, **kw):
+            pass
+
+        def bind(self, *a, **kw):
+            pass
+
+        def configure(self, **kw):
+            if 'values' in kw:
+                self.values = kw['values']
+
+        def cget(self, option):
+            if option == 'values':
+                return self.values
+            return ''
+
+    monkeypatch.setattr(scanner_interface.ctk, 'CTkOptionMenu', RecOptionMenu)
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+    assert window.waybill_var.get() == ''
+    assert window.today_menu.values == []
+
+    window._load_all_today()
+    assert window.lines == []
+    assert window.list_status._text == "Today's waybills"
+
+
+def test_status_label_updates(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    window._load_all_today()
+    assert window.list_status._text == "Today's waybills"
+
+    window._load_all_incomplete()
+    assert window.list_status._text == "Incomplete waybills"
+
+    window._load_all_today()
+    assert window.list_status._text == "Today's waybills"
