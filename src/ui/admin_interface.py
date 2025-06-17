@@ -398,11 +398,25 @@ class AdminWindow(ctk.CTk):
         if not lines:
             return
         scans = self.dm.fetch_scans(waybill)
+
+        part_groups: Dict[str, List[tuple]] = {}
+        for ln in lines:
+            part_groups.setdefault(ln[1], []).append(ln)
+
+        allocated: Dict[int, int] = {}
+        for part, lns in part_groups.items():
+            lns.sort(key=lambda l: 0 if "AMO" in l[3] else 1)
+            remaining = scans.get(part, 0)
+            for ln in lns:
+                alloc = min(ln[2], remaining)
+                allocated[ln[0]] = alloc
+                remaining -= alloc
+
         win = ctk.CTkToplevel(self)
         vars: List[ctk.StringVar] = []
         for i, line in enumerate(lines):
-            scanned = scans.get(line[1], 0)
-            remaining = line[2] - scanned
+            alloc = allocated.get(line[0], 0)
+            remaining = line[2] - alloc
             ctk.CTkLabel(win, text=f"{line[1]} {line[3]}").grid(row=i, column=0, sticky="e")
             var = ctk.StringVar(value=str(remaining))
             vars.append(var)
@@ -412,16 +426,16 @@ class AdminWindow(ctk.CTk):
             conn = sqlite3.connect(self.db_path)
             conn.execute("BEGIN")
             for ln, var in zip(lines, vars):
+                alloc_scanned = allocated.get(ln[0], 0)
                 try:
                     new_remaining = int(var.get())
                 except ValueError:
                     messagebox.showwarning("Invalid value", "Enter a numeric quantity")
-                    new_remaining = ln[2] - scans.get(ln[1], 0)
+                    new_remaining = ln[2] - alloc_scanned
                 if new_remaining < 0:
                     messagebox.showwarning("Invalid value", "Quantity cannot be negative")
                     new_remaining = 0
-                scanned = scans.get(ln[1], 0)
-                new_total = scanned + max(new_remaining, 0)
+                new_total = alloc_scanned + max(new_remaining, 0)
                 self.dm.update_row("waybill_lines", ln[0], {"qty_total": new_total}, conn)
             conn.commit()
             conn.close()
@@ -445,21 +459,34 @@ class AdminWindow(ctk.CTk):
     def _load_waybill_table(self, waybill: str) -> None:
         lines = self.dm.get_waybill_lines(waybill)
         scans = self.dm.fetch_scans(waybill)
+
+        part_groups: Dict[str, List[tuple]] = {}
+        for ln in lines:
+            part_groups.setdefault(ln[1], []).append(ln)
+
+        allocated: Dict[int, int] = {}
+        for part, lns in part_groups.items():
+            lns.sort(key=lambda l: 0 if "AMO" in l[3] else 1)
+            remaining = scans.get(part, 0)
+            for ln in lns:
+                alloc = min(ln[2], remaining)
+                allocated[ln[0]] = alloc
+                remaining -= alloc
         for widget in self.wb_table.winfo_children():
             widget.destroy()
         header = ctk.CTkFrame(self.wb_table)
         header.pack(fill="x")
         for text, width in [
             ("Part", 200),
-            ("Qty Total", 80),
+            ("Remaining", 80),
             ("Remaining", 80),
         ]:
             ctk.CTkLabel(header, text=text, width=width).pack(side="left")
 
         self._wb_row_widgets.clear()
         for rowid, part, qty_total, _ in lines:
-            scanned = scans.get(part, 0)
-            remaining = qty_total - scanned
+            alloc = allocated.get(rowid, 0)
+            remaining = qty_total - alloc
             frame = ctk.CTkFrame(self.wb_table)
             frame.pack(fill="x", pady=1)
             ctk.CTkLabel(frame, text=part, width=200, anchor="w").pack(side="left")
