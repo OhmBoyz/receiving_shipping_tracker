@@ -381,7 +381,7 @@ class DataManager:
             query = (
                 "SELECT s.waybill_number, u.username, s.part_number, s.total_scanned, "
                 "s.expected_qty, s.remaining_qty, s.allocated_to, s.reception_date "
-                "FROM scan_summary s JOIN users u ON u.user_id = s.user_id WHERE 1=1"
+                "FROM scan_summary s LEFT JOIN users u ON u.user_id = s.user_id WHERE 1=1"
             )
             params: List[object] = []
             if user_id is not None:
