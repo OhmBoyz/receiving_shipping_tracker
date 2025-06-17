@@ -86,31 +86,54 @@ class ShipperWindow(ctk.CTk):
             self.destroy()
             return
 
-        default = self.today_waybills[0] if self.today_waybills else (self.other_waybills[0] if self.other_waybills else "")
+        default = self.today_waybills[0] if self.today_waybills else (
+            self.other_waybills[0] if self.other_waybills else ""
+        )
         self.waybill_var = ctk.StringVar(value=default)
         if hasattr(self, "columnconfigure"):
             try:
                 self.columnconfigure(0, weight=1)
                 self.columnconfigure(1, weight=1)
-                self.rowconfigure(3, weight=1)
+                self.rowconfigure(4, weight=1)
             except Exception:
                 pass
 
         ctk.CTkLabel(self, text="Today's Waybills:").grid(row=0, column=0, pady=5, sticky="w")
-        today_menu = ctk.CTkOptionMenu(self, values=self.today_waybills, variable=self.waybill_var, command=self.load_waybill)
-        today_menu.grid(row=1, column=0, sticky="ew")
+        today_menu = ctk.CTkOptionMenu(
+            self,
+            values=self.today_waybills,
+            variable=self.waybill_var,
+            command=self.load_waybill,
+            width=200,
+        )
+        today_menu.grid(row=1, column=0)
         self.today_menu = today_menu
+        if not self.today_waybills:
+            self.waybill_var.set("")
+            self.today_menu.configure(values=[])
 
         ctk.CTkLabel(self, text="Older/Incomplete:").grid(row=0, column=1, pady=5, sticky="w")
-        other_menu = ctk.CTkOptionMenu(self, values=self.other_waybills, variable=self.waybill_var, command=self.load_waybill)
-        other_menu.grid(row=1, column=1, sticky="ew")
+        other_menu = ctk.CTkOptionMenu(
+            self,
+            values=self.other_waybills,
+            variable=self.waybill_var,
+            command=self.load_waybill,
+            width=200,
+        )
+        other_menu.grid(row=1, column=1)
         self.other_menu = other_menu
 
-        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=2, column=0, pady=(0,5), sticky="ew")
-        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=2, column=1, pady=(0,5), sticky="ew")
+        self.list_status = ctk.CTkLabel(
+            self,
+            text="Today's waybills" if self.today_waybills else "Incomplete waybills",
+        )
+        self.list_status.grid(row=2, column=0, columnspan=2, pady=(0, 5))
+
+        ctk.CTkButton(self, text="Show All Today's Waybills", command=self._load_all_today).grid(row=3, column=0, pady=(0,5))
+        ctk.CTkButton(self, text="Show All Incomplete Waybills", command=self._load_all_incomplete).grid(row=3, column=1, pady=(0,5))
 
         self.main_frame = ctk.CTkFrame(self)
-        self.main_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
+        self.main_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
         if hasattr(self.main_frame, "grid_columnconfigure"):
             try:
                 self.main_frame.grid_columnconfigure(0, weight=3)
@@ -276,11 +299,25 @@ class ShipperWindow(ctk.CTk):
             pb.set(ratio)
             pb.configure(progress_color=_color_from_ratio(ratio))
 
+    def _load_list(self, waybills: List[str], label: str) -> None:
+        if not waybills:
+            for widget in self.lines_frame.winfo_children():
+                widget.destroy()
+            self.lines = []
+            for widget in self.progress_frame.winfo_children():
+                widget.destroy()
+            self.list_status.configure(text=label)
+            self.waybill_var.set("")
+            return
+        self.waybill_var.set(waybills[0])
+        self.load_waybills(waybills)
+        self.list_status.configure(text=label)
+
     def _load_all_today(self) -> None:
-        self.load_waybills(self.today_waybills)
+        self._load_list(self.today_waybills, "Today's waybills")
 
     def _load_all_incomplete(self) -> None:
-        self.load_waybills(self.dm.fetch_incomplete_waybills())
+        self._load_list(self.dm.fetch_incomplete_waybills(), "Incomplete waybills")
 
     def load_bo_report(self, filepath: str) -> None:
         """Load the BO Excel file for later use."""
@@ -432,6 +469,11 @@ class ShipperWindow(ctk.CTk):
 
     def load_waybills(self, waybills: List[str]) -> None:
         if not waybills:
+            for widget in self.lines_frame.winfo_children():
+                widget.destroy()
+            self.lines = []
+            for widget in self.progress_frame.winfo_children():
+                widget.destroy()
             return
         if self.session_id is None:
             self.session_id = self._get_session(waybills[0])
