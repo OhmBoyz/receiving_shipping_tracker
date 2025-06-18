@@ -330,8 +330,15 @@ class ShipperWindow(ctk.CTk):
         incompletes = self.dm.fetch_incomplete_waybills()
         import_dates = self.dm.get_waybill_import_dates()
         today = datetime.utcnow().date()
-        target = today
-        old = [wb for wb in incompletes if import_dates.get(wb) != target]
+        old: list[str] = []
+        for wb in incompletes:
+            date_str = import_dates.get(wb)
+            try:
+                imp = datetime.fromisoformat(date_str).date() if date_str else None
+            except Exception:
+                imp = None
+            if imp != today:
+                old.append(wb)
         self._load_list(old, "Incomplete waybills")
 
     def load_bo_report(self, filepath: str) -> None:

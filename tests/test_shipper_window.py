@@ -360,3 +360,18 @@ def test_status_label_updates(temp_db, monkeypatch):
 
     window._load_all_today()
     assert window.list_status._text == "Today's waybills"
+
+
+def test_load_all_incomplete_excludes_today(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    window._load_all_incomplete()
+
+    assert window.lines == []
+    assert window.waybill_var.get() == ""
