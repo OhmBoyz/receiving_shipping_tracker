@@ -9,10 +9,7 @@ def setup_waybill_multi(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     today = datetime.utcnow().date().isoformat()
-    target = datetime.utcnow().date() - timedelta(days=1)
-    while target.weekday() >= 5:
-        target -= timedelta(days=1)
-    import_date = target.isoformat()
+    import_date = today
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
         f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}', '{import_date}')"
