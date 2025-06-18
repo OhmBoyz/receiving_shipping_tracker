@@ -12,10 +12,7 @@ def setup_waybill(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     today = datetime.utcnow().date().isoformat()
-    target = datetime.utcnow().date() - timedelta(days=1)
-    while target.weekday() >= 5:
-        target -= timedelta(days=1)
-    import_date = target.isoformat()
+    import_date = today
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
         f" VALUES ('WB1', 'P1', 5, 'DRV-AMO', '', '', 0, '{today}', '{import_date}')"
@@ -262,8 +259,16 @@ def test_progress_table_highlighting(temp_db, monkeypatch):
     conn = sqlite3.connect(temp_db)
     cur = conn.cursor()
     old_date = '2024-01-01'
-    cur.execute("INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date) VALUES ('OLD1','P1',1,'DRV-AMO','','',0,?)", (old_date,))
-    cur.execute("INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date) VALUES ('OLD2','P1',1,'DRV-AMO','','',0,?)", (old_date,))
+    cur.execute(
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        " VALUES ('OLD1','P1',1,'DRV-AMO','','',0,?, ?)",
+        (old_date, old_date),
+    )
+    cur.execute(
+        "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"
+        " VALUES ('OLD2','P1',1,'DRV-AMO','','',0,?, ?)",
+        (old_date, old_date),
+    )
     conn.commit()
     conn.close()
 

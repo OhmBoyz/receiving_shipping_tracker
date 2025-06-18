@@ -76,7 +76,7 @@ class ShipperWindow(ctk.CTk):
         today = datetime.utcnow().date()
         all_wbs = self._fetch_waybills(None)
         import_dates = self.dm.get_waybill_import_dates()
-        target = _last_working_day(today)
+        target = today
         self.today_waybills = []
         for wb in all_wbs:
             date_str = import_dates.get(wb)
@@ -228,7 +228,7 @@ class ShipperWindow(ctk.CTk):
             messagebox.showinfo("Info", "No active waybills in database")
             return
         import_dates = self.dm.get_waybill_import_dates()
-        target = _last_working_day(today)
+        target = today
         self.today_waybills = []
         for wb in all_wbs:
             date_str = import_dates.get(wb)
@@ -276,9 +276,8 @@ class ShipperWindow(ctk.CTk):
             lbl.grid(row=0, column=idx, sticky="w")
 
         rows = self._get_waybill_progress()
-        dates = self.dm.get_waybill_dates()
+        dates = self.dm.get_waybill_import_dates()
         today = datetime.utcnow().date()
-        target = _last_working_day(today)
         for row_idx, (waybill, total, remaining) in enumerate(rows, start=1):
             date_str = dates.get(waybill, "")
             try:
@@ -286,7 +285,7 @@ class ShipperWindow(ctk.CTk):
             except Exception:
                 parsed = None
             color = (
-                "orange" if parsed and parsed < target and remaining > 0 else None
+                "orange" if parsed and parsed < today and remaining > 0 else None
             )
             kwargs = dict(
                 text=f"{waybill} ({date_str})", width=120, anchor="w", font=cell_font
@@ -331,7 +330,7 @@ class ShipperWindow(ctk.CTk):
         incompletes = self.dm.fetch_incomplete_waybills()
         import_dates = self.dm.get_waybill_import_dates()
         today = datetime.utcnow().date()
-        target = _last_working_day(today)
+        target = today
         old = [wb for wb in incompletes if import_dates.get(wb) != target]
         self._load_list(old, "Incomplete waybills")
 
