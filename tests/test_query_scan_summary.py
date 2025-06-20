@@ -14,10 +14,10 @@ def setup_summaries(db_path: str) -> None:
     uid = cur.lastrowid
     cur.execute(
         "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?,?,?)",
-        (uid, 'WB1', datetime.utcnow().isoformat()),
+        (uid, 'WB1', datetime.now().isoformat()),
     )
     sess1 = cur.lastrowid
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.now().date().isoformat()
     cur.execute(
         "INSERT INTO scan_summary (session_id, waybill_number, user_id, part_number, total_scanned, expected_qty, remaining_qty, allocated_to, reception_date) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
@@ -27,7 +27,7 @@ def setup_summaries(db_path: str) -> None:
     # summary row with no matching user
     cur.execute(
         "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?,?,?)",
-        (99, 'WB2', datetime.utcnow().isoformat()),
+        (99, 'WB2', datetime.now().isoformat()),
     )
     sess2 = cur.lastrowid
     cur.execute(

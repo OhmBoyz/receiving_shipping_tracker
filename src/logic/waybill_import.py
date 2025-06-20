@@ -86,7 +86,7 @@ def import_waybill(filepath: str, db_path: str = DB_PATH) -> int:
             row["DESCRIPTION"],
             row["ITEM_COSTS"],
             row["SHIP_DATE"],
-            datetime.utcnow().date().isoformat(),
+            datetime.now().date().isoformat(),
         )
         for _, row in df.iterrows()
     ]

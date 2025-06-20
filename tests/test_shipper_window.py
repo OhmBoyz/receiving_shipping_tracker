@@ -11,7 +11,7 @@ from src.data_manager import DataManager
 def setup_waybill(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.now().date().isoformat()
     import_date = today
     cur.execute(
         "INSERT INTO waybill_lines (waybill_number, part_number, qty_total, subinv, locator, description, item_cost, date, import_date)"

@@ -32,7 +32,7 @@ class DataManager:
 
     def create_session(self, user_id: int, waybill: str = "") -> int:
         """Create a new scan session and return its id."""
-        start_time = datetime.utcnow().isoformat()
+        start_time = datetime.now().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
@@ -46,7 +46,7 @@ class DataManager:
 
     def end_session(self, session_id: int) -> None:
         """Mark ``session_id`` as finished."""
-        end_time = datetime.utcnow().isoformat()
+        end_time = datetime.now().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
@@ -66,7 +66,7 @@ class DataManager:
             row = cur.fetchone()
             if row:
                 return int(row[0])
-            start_time = datetime.utcnow().isoformat()
+            start_time = datetime.now().isoformat()
             cur.execute(
                 "INSERT INTO scan_sessions (user_id, waybill_number, start_time) VALUES (?, ?, ?)",
                 (user_id, "", start_time),
@@ -180,7 +180,7 @@ class DataManager:
 
     def mark_waybill_terminated(self, waybill: str, user_id: int) -> None:
         """Record ``waybill`` termination by ``user_id`` with timestamp."""
-        terminated_at = datetime.utcnow().isoformat()
+        terminated_at = datetime.now().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
@@ -302,7 +302,7 @@ class DataManager:
         raw_scan: str = "",
     ) -> None:
         if timestamp is None:
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(

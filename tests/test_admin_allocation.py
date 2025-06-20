@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 
 def setup_data(db_path: str) -> None:
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.now().date().isoformat()
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -18,7 +18,7 @@ def setup_data(db_path: str) -> None:
     cur.execute(
         "INSERT INTO scan_events (session_id, waybill_number, part_number, scanned_qty, timestamp, raw_scan) "
         "VALUES (1, 'WB1', 'P1', 6, ?, '')",
-        (datetime.utcnow().isoformat(),),
+        (datetime.now().isoformat(),),
     )
     conn.commit()
     conn.close()
