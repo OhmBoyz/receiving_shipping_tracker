@@ -11,6 +11,7 @@ import pandas as pd
 import platform
 
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import messagebox
 
 from src.logic import bo_report
@@ -188,6 +189,9 @@ class ShipperWindow(ctk.CTk):
         self.scan_entry = ctk.CTkEntry(controls, textvariable=self.scan_var, font=self.font_controls)
         self.scan_entry.grid(row=0, column=2, sticky="ew")
         self.scan_entry.bind("<Return>", self.process_scan)
+        self.scan_entry.bind("<KeyRelease>", self._show_suggestions)
+        self.suggestion_win = None
+        self.suggestion_list = None
         finish_btn = ctk.CTkButton(controls, text="Finish Waybill", command=self.manual_finish, font=self.font_controls)
         finish_btn.grid(row=0, column=3, padx=(20, 0))
         logout_btn = ctk.CTkButton(controls, text="End Session", command=self.manual_logout, font=self.font_controls)
@@ -452,11 +456,12 @@ class ShipperWindow(ctk.CTk):
         if hasattr(line, 'rem_label') and line.rem_label is not None:
             line.rem_label.configure(text=str(total_qty - total_scanned))
 
+    def _reset_alloc_labels(self) -> None:
+        for lbl in (self.amo_label, self.kanban_label):
+            lbl.configure(text=lbl._base_text, fg_color=self._label_bg)
+
     def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int, color) -> None:
         label.configure(text=f"{label._base_text} +{qty}", fg_color=color)
-        if getattr(label, "_after_id", None):
-            self.after_cancel(label._after_id)
-        label._after_id = self.after(1500, lambda: label.configure(text=label._base_text, fg_color=self._label_bg))
 
     def _update_alloc_labels(self, allocations: Dict[str, int]) -> None:
         if allocations.get("AMO"):
@@ -472,6 +477,48 @@ class ShipperWindow(ctk.CTk):
                 winsound.Beep(1000, 200)
             except Exception:
                 pass
+
+    def _hide_suggestions(self) -> None:
+        if self.suggestion_win is not None:
+            try:
+                self.suggestion_win.withdraw()
+            except Exception:
+                pass
+
+    def _show_suggestions(self, event=None) -> None:
+        text = self.scan_var.get().strip().upper()
+        if not text:
+            self._hide_suggestions()
+            return
+        parts = sorted({l.part for l in self.lines if l.part.startswith(text)})
+        if not parts:
+            self._hide_suggestions()
+            return
+        if self.suggestion_win is None:
+            self.suggestion_win = tk.Toplevel(self)
+            self.suggestion_win.overrideredirect(True)
+            self.suggestion_list = tk.Listbox(self.suggestion_win)
+            self.suggestion_list.pack(fill="both", expand=True)
+            self.suggestion_list.bind("<Double-Button-1>", self._on_suggestion_select)
+        else:
+            self.suggestion_list.delete(0, tk.END)
+        for part in parts:
+            self.suggestion_list.insert(tk.END, part)
+        x = self.scan_entry.winfo_rootx()
+        y = self.scan_entry.winfo_rooty() + self.scan_entry.winfo_height()
+        self.suggestion_win.geometry(f"+{x}+{y}")
+        self.suggestion_win.deiconify()
+
+    def _on_suggestion_select(self, event=None) -> None:
+        if self.suggestion_list is None:
+            return
+        try:
+            part = self.suggestion_list.get(tk.ACTIVE)
+        except Exception:
+            return
+        self.scan_var.set(part)
+        self._hide_suggestions()
+        self.process_scan()
 
 
 
@@ -492,6 +539,8 @@ class ShipperWindow(ctk.CTk):
         self.history_box.configure(state="disabled")
 
     def process_scan(self, event=None) -> None:
+        self._reset_alloc_labels()
+        self._hide_suggestions()
         raw = self.scan_var.get().strip()
         if not raw: return
         try:
