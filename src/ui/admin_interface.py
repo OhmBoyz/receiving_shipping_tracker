@@ -505,7 +505,7 @@ class AdminWindow(ctk.CTk):
             ctk.CTkLabel(header, text=text, width=width).pack(side="left")
 
         self._wb_row_widgets.clear()
-        for rowid, part, qty_total, _ in lines:
+        for rowid, part, qty_total, _, _ in lines:
             alloc = allocated.get(rowid, 0)
             remaining = qty_total - alloc
             frame = ctk.CTkFrame(self.wb_table)

@@ -59,6 +59,14 @@ def dummy_gui(monkeypatch):
             return []
         def focus_set(self):
             pass
+        def columnconfigure(self, *a, **kw):
+            pass
+        def rowconfigure(self, *a, **kw):
+            pass
+        def grid_columnconfigure(self, *a, **kw):
+            pass
+        def grid_rowconfigure(self, *a, **kw):
+            pass
 
     class DummyCTk(DummyWidget):
         def title(self, *a, **kw):

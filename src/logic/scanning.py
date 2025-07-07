@@ -34,6 +34,7 @@ class Line:
     part: str
     qty_total: int
     subinv: str
+    waybill_number: str
     subinv_code: str | None = None
     scanned: int = 0
 

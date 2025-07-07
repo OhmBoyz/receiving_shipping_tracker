@@ -267,29 +267,29 @@ class DataManager:
         progress.sort()
         return progress
 
-    def get_waybill_lines(self, waybill: str) -> List[Tuple[int, str, int, str]]:
+    def get_waybill_lines(self, waybill: str) -> List[Tuple[int, str, int, str, str]]:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) ORDER BY part_number",
+                "SELECT id, part_number, qty_total, subinv, waybill_number FROM waybill_lines WHERE UPPER(waybill_number)=UPPER(?) ORDER BY part_number",
                 (waybill,),
             )
-            rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
+            rows = [(int(r[0]), r[1], int(r[2]), r[3], r[4]) for r in cur.fetchall()]
         return rows
 
-    def get_waybill_lines_multi(self, waybills: Iterable[str]) -> List[Tuple[int, str, int, str]]:
+    def get_waybill_lines_multi(self, waybills: Iterable[str]) -> List[Tuple[int, str, int, str, str]]:
         """Return lines for all ``waybills``."""
         ids = list(waybills)
         if not ids:
             return []
         placeholders = ",".join("?" for _ in ids)
         query = (
-            f"SELECT id, part_number, qty_total, subinv FROM waybill_lines WHERE waybill_number IN ({placeholders}) ORDER BY waybill_number, part_number"
+            f"SELECT id, part_number, qty_total, subinv, waybill_number FROM waybill_lines WHERE waybill_number IN ({placeholders}) ORDER BY waybill_number, part_number"
         )
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(query, ids)
-            rows = [(int(r[0]), r[1], int(r[2]), r[3]) for r in cur.fetchall()]
+            rows = [(int(r[0]), r[1], int(r[2]), r[3], r[4]) for r in cur.fetchall()]
         return rows
 
     def insert_scan_event(

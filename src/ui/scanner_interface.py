@@ -286,7 +286,7 @@ class ShipperWindow(ctk.CTk):
         for row in rows:
             code = row[3]
             friendly = SUBINV_MAP.get(code) or code
-            line = Line(row[0], row[1].upper(), int(row[2]), friendly, code)
+            line = Line(row[0], row[1].upper(), int(row[2]), friendly, row[4], code)
             self.lines.append(line)
 
         part_groups: Dict[str, List[Line]] = {}
@@ -426,13 +426,31 @@ class ShipperWindow(ctk.CTk):
             self._finish_session()
 
     def _record_summary(self) -> None:
-        scans = self._fetch_scans(self.active_waybill)
+        waybills = {line.waybill_number for line in self.lines}
         rows = []
-        for part, total in scans.items():
-            expected = sum(line.qty_total for line in self.lines if line.part == part)
-            remaining = expected - total
-            allocated = ", ".join(f"{line.subinv}:{line.scanned}" for line in self.lines if line.part == part)
-            rows.append((self.session_id, self.active_waybill, self.user_id, part, total, expected, remaining, allocated, datetime.now().date().isoformat()))
+        for wb in waybills:
+            scans = self._fetch_scans(wb)
+            for part, total in scans.items():
+                expected = sum(
+                    ln.qty_total for ln in self.lines if ln.part == part and ln.waybill_number == wb
+                )
+                remaining = expected - total
+                allocated = ", ".join(
+                    f"{ln.subinv}:{ln.scanned}" for ln in self.lines if ln.part == part and ln.waybill_number == wb
+                )
+                rows.append(
+                    (
+                        self.session_id,
+                        wb,
+                        self.user_id,
+                        part,
+                        total,
+                        expected,
+                        remaining,
+                        allocated,
+                        datetime.now().date().isoformat(),
+                    )
+                )
         if rows:
             self.dm.insert_scan_summaries(rows)
 
@@ -569,6 +587,7 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
+        prev_scans = {ln.rowid: ln.scanned for ln in matching}
         try:
             allocations = self.logic.allocate(matching, qty)
         except ValueError:
@@ -579,11 +598,22 @@ class ShipperWindow(ctk.CTk):
             self.qty_var.set(1)
             return
 
+        deltas = {ln.rowid: ln.scanned - prev_scans[ln.rowid] for ln in matching}
         for ln in matching:
             self._update_line_widgets(ln)
         self._update_alloc_labels(allocations)
         self._update_last_entry(part, qty, allocations)
-        self._insert_event(part, qty, raw)
+        if self.session_id is not None:
+            for ln in matching:
+                delta = deltas[ln.rowid]
+                if delta:
+                    self.dm.insert_scan_event(
+                        self.session_id,
+                        ln.waybill_number,
+                        part,
+                        delta,
+                        raw_scan=raw,
+                    )
         self.refresh_progress_table()
         self.scan_var.set("")
         self.qty_var.set(1)
