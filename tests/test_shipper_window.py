@@ -52,7 +52,7 @@ def test_process_scan_allocation(temp_db, monkeypatch):
 
     conn = sqlite3.connect(temp_db)
     cur = conn.cursor()
-    cur.execute('SELECT scanned_qty, waybill_number FROM scan_events')
+    cur.execute('SELECT SUM(scanned_qty), waybill_number FROM scan_events GROUP BY waybill_number')
     qty, waybill = cur.fetchone()
     conn.close()
     assert qty == 6
@@ -96,7 +96,7 @@ def test_waybill_switch_does_not_affect_previous_scans(temp_db, monkeypatch):
     window.process_scan()
 
     # switch to second waybill and scan again
-    window.waybill_var.set('WB2')
+    window.today_var.set('WB2')
     window.load_waybill('WB2')
     window.qty_var.set(3)
     window.scan_var.set('P1')
@@ -335,12 +335,12 @@ def test_today_menu_empty_and_status_label(temp_db, monkeypatch):
     monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
 
     window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
-    assert window.waybill_var.get() == ''
-    assert window.today_menu.values == []
+    assert window.today_var.get() == '---'
+    assert window.today_menu.values == ['---']
 
     window._load_all_today()
     assert window.lines == []
-    assert window.list_status._text == "Today's waybills"
+    assert window.list_status._text == "Today's Waybills"
 
 
 def test_status_label_updates(temp_db, monkeypatch):
@@ -353,13 +353,13 @@ def test_status_label_updates(temp_db, monkeypatch):
     window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
 
     window._load_all_today()
-    assert window.list_status._text == "Today's waybills"
+    assert window.list_status._text == "Today's Waybills"
 
     window._load_all_incomplete()
-    assert window.list_status._text == "Incomplete waybills"
+    assert window.list_status._text == "Incomplete & Older Waybills"
 
     window._load_all_today()
-    assert window.list_status._text == "Today's waybills"
+    assert window.list_status._text == "Today's Waybills"
 
 
 def test_load_all_incomplete_excludes_today(temp_db, monkeypatch):
@@ -374,4 +374,36 @@ def test_load_all_incomplete_excludes_today(temp_db, monkeypatch):
     window._load_all_incomplete()
 
     assert window.lines == []
-    assert window.waybill_var.get() == ""
+    assert window.today_var.get() == "---"
+
+
+def test_multi_waybill_scan_events_and_summary(temp_db, monkeypatch):
+    setup_waybill(temp_db)
+
+    from src.ui import scanner_interface
+
+    monkeypatch.setattr(scanner_interface.ShipperWindow, '_finish_session', lambda self: None)
+
+    window = scanner_interface.ShipperWindow(user_id=1, db_path=temp_db)
+
+    # Load both waybills simultaneously
+    window._load_list(['WB1', 'WB2'], 'Test')
+
+    window.qty_var.set(7)
+    window.scan_var.set('P1')
+    window.process_scan()
+
+    conn = sqlite3.connect(temp_db)
+    cur = conn.cursor()
+    cur.execute('SELECT waybill_number, scanned_qty FROM scan_events ORDER BY waybill_number')
+    rows = cur.fetchall()
+    conn.close()
+    assert rows == [('WB1', 5), ('WB2', 2)]
+
+    window._record_summary()
+
+    cur = sqlite3.connect(temp_db).cursor()
+    cur.execute('SELECT waybill_number, part_number, total_scanned FROM scan_summary ORDER BY waybill_number')
+    summary = cur.fetchall()
+    cur.connection.close()
+    assert summary == [('WB1', 'P1', 5), ('WB2', 'P1', 2)]
