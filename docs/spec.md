@@ -145,5 +145,6 @@ These tables together:
 - Update BO report at end of receiving session
 - BO integration activates when the ADMIN uploads a BO Excel file
 
-## 12. NEXT STEPS
+## 12. PERSONAL NOTES (IGNORE THIS SECTION)
+- pyinstaller --noconfirm --windowed --onefile src/main.py to make the main.exe
 
