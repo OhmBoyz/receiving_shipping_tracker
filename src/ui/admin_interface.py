@@ -201,18 +201,19 @@ class AdminWindow(ctk.CTk):
             return
 
         try:
-            created, updated = import_bo_files(backlog_path, redcon_path, self.db_path)
+            created, updated, deleted = import_bo_files(backlog_path, redcon_path, self.db_path)
             messagebox.showinfo(
                 "BO Import Complete",
                 f"Successfully imported BO data:\n\n"
                 f"New Records Created: {created}\n"
-                f"Existing Records Updated: {updated}"
+                f"Existing Records Updated: {updated}\n"
+                f"Stale Records Deleted: {deleted}"
             )
-            logger.info(f"BO Import successful: {created} created, {updated} updated.")
+            logger.info(f"BO Import successful: {created} created, {updated} updated, {deleted} deleted.")
         except Exception as exc:
             logger.exception("BO report import failed.")
             messagebox.showerror("BO Import Failed", f"An error occurred: {exc}")
-            
+
     # ---------------------------- User Management ---------------------------
     def _build_user_tab(self) -> None:
         self.users: List[tuple[int, str, str]] = []

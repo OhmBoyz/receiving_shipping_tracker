@@ -77,10 +77,9 @@ def read_redcon_df(file_path: str | Path) -> pd.DataFrame:
     except Exception as e:
         raise ValueError(f"Error reading REDCON file: {e}") from e
 
-def sync_bo_data(backlog_df: pd.DataFrame, redcon_df: pd.DataFrame) -> List[Dict[str, any]]:
+def sync_bo_data(backlog_df: pd.DataFrame, redcon_df: pd.DataFrame) -> Tuple[List[Dict[str, any]], Set[Tuple[str, str]]]:
     """
-    Merges the backlog and redcon dataframes, keeping only common items.
-    Returns a list of dictionaries ready for database insertion.
+    Merges dataframes and returns records to insert AND a set of active keys.
     """
     keys_common: Set[Tuple[str, str]] = set(backlog_df.index) & set(redcon_df.index)
     
@@ -100,23 +99,34 @@ def sync_bo_data(backlog_df: pd.DataFrame, redcon_df: pd.DataFrame) -> List[Dict
             "discrete_job": _clean_str(bl_row["discrete_job"]),
             "part_number": part_number,
             "qty_req": int(bl_row["qty_req"]),
-            "flow_status": _clean_str(rc_row["flow_status"]) or "AWAITING_SHIPPING",
+            "flow_status": _clean_str(rc_row.get("flow_status", "AWAITING_SHIPPING")),
             "last_import_date": datetime.now().date().isoformat(),
         }
         records_to_insert.append(payload)
         
+    return records_to_insert, keys_common
+        
     return records_to_insert
 
-def import_bo_files(backlog_path: str, redcon_path: str, db_path: str = DB_PATH) -> Tuple[int, int]:
+def import_bo_files(backlog_path: str, redcon_path: str, db_path: str = DB_PATH) -> Tuple[int, int, int]:
     """
-    Orchestrates the import process for BO files and returns counts.
+    Orchestrates the import and cleanup process for BO files.
+    Returns counts: (created, updated, deleted).
     """
+    dm = DataManager(db_path)
+
+    # Step 1: Pre-import cleanup
+    dm.clear_non_picking_bo_items()
+
+    # Step 2: Process new files
     backlog_df = read_backlog_df(backlog_path)
     redcon_df = read_redcon_df(redcon_path)
+    records, active_keys = sync_bo_data(backlog_df, redcon_df)
     
-    records = sync_bo_data(backlog_df, redcon_df)
-    
-    dm = DataManager(db_path)
+    # Step 3: Insert and Update
     created, updated = dm.insert_bo_items(records)
     
-    return created, updated
+    # Step 4: Post-import cleanup for stale 'PICKING' items
+    deleted = dm.reconcile_picking_items(list(active_keys))
+    
+    return created, updated, deleted

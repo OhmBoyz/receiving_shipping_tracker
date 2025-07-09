@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional
@@ -171,6 +172,10 @@ class ShipperWindow(ctk.CTk):
         self.kanban_label = ctk.CTkLabel(self.alloc_frame, text="KANBAN", height=80, font=self.font_sidebar_title, fg_color="gray80", corner_radius=8)
         self.kanban_label.pack(pady=5, fill="x", expand=True)
         self.kanban_label._base_text = "KANBAN"
+        self.bo_label = ctk.CTkLabel(self.alloc_frame, text="BACK ORDER", height=80, font=self.font_sidebar_title, fg_color="gray80", corner_radius=8)
+        self.bo_label.pack(pady=5, fill="x", expand=True)
+        self.bo_label._base_text = "BACK ORDER"
+        
         self._label_bg = self.amo_label.cget("fg_color")
         self.last_entries: List[str] = []
         self.history_box = ctk.CTkTextbox(self.sidebar_frame, font=self.font_sidebar_history)
@@ -426,18 +431,26 @@ class ShipperWindow(ctk.CTk):
             self._finish_session()
 
     def _record_summary(self) -> None:
+        if self.session_id is None:
+            return
+
         waybills = {line.waybill_number for line in self.lines}
         rows = []
+
+        # Get the accurate, aggregated allocation strings for the entire session
+        session_allocations = self.dm.get_session_allocations(self.session_id)
+
         for wb in waybills:
-            scans = self._fetch_scans(wb)
+            scans = self._fetch_scans(wb) # Gets total quantities per part
             for part, total in scans.items():
                 expected = sum(
                     ln.qty_total for ln in self.lines if ln.part == part and ln.waybill_number == wb
                 )
                 remaining = expected - total
-                allocated = ", ".join(
-                    f"{ln.subinv}:{ln.scanned}" for ln in self.lines if ln.part == part and ln.waybill_number == wb
-                )
+
+                # Use the accurate allocation string we fetched
+                allocated_str = session_allocations.get(part, "")
+
                 rows.append(
                     (
                         self.session_id,
@@ -447,7 +460,7 @@ class ShipperWindow(ctk.CTk):
                         total,
                         expected,
                         remaining,
-                        allocated,
+                        allocated_str, # Use the correct string here
                         datetime.now().date().isoformat(),
                     )
                 )
@@ -475,7 +488,7 @@ class ShipperWindow(ctk.CTk):
             line.rem_label.configure(text=str(total_qty - total_scanned))
 
     def _reset_alloc_labels(self) -> None:
-        for lbl in (self.amo_label, self.kanban_label):
+        for lbl in (self.amo_label, self.kanban_label, self.bo_label):
             lbl.configure(text=lbl._base_text, fg_color=self._label_bg)
 
     def _flash_alloc_label(self, label: ctk.CTkLabel, qty: int, color) -> None:
@@ -486,6 +499,8 @@ class ShipperWindow(ctk.CTk):
             self._flash_alloc_label(self.amo_label, allocations["AMO"], "red")
         if allocations.get("KANBAN"):
             self._flash_alloc_label(self.kanban_label, allocations["KANBAN"], "green")
+        if allocations.get("BACK ORDER"):
+            self._flash_alloc_label(self.kanban_label, allocations["BACK ORDER"], "yellow")
 
     def _alert_beep(self) -> None:
         self.bell()
@@ -546,6 +561,8 @@ class ShipperWindow(ctk.CTk):
             alloc_parts.append(f"AMO {allocations['AMO']}")
         if allocations.get("KANBAN"):
             alloc_parts.append(f"KANBAN {allocations['KANBAN']}")
+        if allocations.get("BACK ORDER"):
+            alloc_parts.append(f"BACK ORDER {allocations['BACK ORDER']}")
         alloc_text = ", ".join(alloc_parts)
         timestamp = datetime.now().strftime("%H:%M:%S")
         entry = f"{timestamp} - {part} x{qty} -> {alloc_text}"
@@ -560,64 +577,114 @@ class ShipperWindow(ctk.CTk):
         self._reset_alloc_labels()
         self._hide_suggestions()
         raw = self.scan_var.get().strip()
-        if not raw: return
+        if not raw:
+            return
+
         try:
-            qty = self.qty_var.get()
+            total_scanned_qty = self.qty_var.get()
         except Exception:
-            qty = 1
-        if qty <= 0:
+            total_scanned_qty = 1
+
+        if total_scanned_qty <= 0:
             messagebox.showwarning("Invalid qty", "Quantity must be > 0")
             self._alert_beep()
             return
+
         part, box_qty = self.logic.resolve_part(raw)
         part = part.upper()
-        if qty == 1 and box_qty > 1:
-            qty = box_qty
-        if self.bo_df is not None:
-            try:
-                bo_report.find_bo_match(part, self.bo_df)
-            except NotImplementedError:
-                pass
+        if total_scanned_qty == 1 and box_qty > 1:
+            total_scanned_qty = box_qty
 
-        matching = [ln for ln in self.lines if ln.part == part]
-        if not matching:
+        matching_lines = [ln for ln in self.lines if ln.part == part]
+        if not matching_lines:
             messagebox.showwarning("Unknown part", f"{part} not on active waybill list.")
             self._alert_beep()
             self.scan_var.set("")
             self.qty_var.set(1)
             return
 
-        prev_scans = {ln.rowid: ln.scanned for ln in matching}
-        try:
-            allocations = self.logic.allocate(matching, qty)
-        except ValueError:
-            logger.warning("Over scan detected for part %s (qty=%s)", part, qty)
-            messagebox.showwarning("Over scan", "Quantity exceeds expected total for this part.")
-            self._alert_beep()
-            self.scan_var.set("")
-            self.qty_var.set(1)
-            return
+        # --- CORRECTED ALLOCATION LOGIC ---
 
-        deltas = {ln.rowid: ln.scanned - prev_scans[ln.rowid] for ln in matching}
-        for ln in matching:
+        qty_remaining_from_scan = total_scanned_qty
+        bo_allocations = {}
+        
+        # 1. Prioritize fulfilling Back Orders
+        open_bo_lines = self.dm.get_open_bo_lines(part)
+        if open_bo_lines:
+            for bo_id, go_item, qty_req, qty_fulfilled in open_bo_lines:
+                if qty_remaining_from_scan == 0:
+                    break
+
+                # Calculate the actual quantity still needed for this line
+                qty_truly_needed = qty_req - qty_fulfilled
+                if qty_truly_needed <= 0:
+                    continue
+
+                # Determine how much of the scan to apply to this BO line
+                qty_for_this_bo = min(qty_remaining_from_scan, qty_truly_needed)
+
+                self.dm.update_bo_fulfillment(bo_id, qty_for_this_bo)
+                
+                # Aggregate BO allocations for logging
+                current_bo_total = bo_allocations.get("BACK ORDER", 0)
+                bo_allocations["BACK ORDER"] = current_bo_total + qty_for_this_bo
+                
+                qty_remaining_from_scan -= qty_for_this_bo
+
+            if bo_allocations.get("BACK ORDER", 0) > 0:
+                total_bo_qty = bo_allocations["BACK ORDER"]
+                messagebox.showinfo(
+                    "Back Order Allocation",
+                    f"{total_bo_qty} units of {part} have been allocated to open Back Orders.\n"
+                    f"Please set them aside in the BO Staging Area."
+                )
+                self._flash_alloc_label(self.bo_label, total_bo_qty, "yellow")
+
+        # 2. Allocate the remaining quantity to the waybill (AMO/KANBAN)
+        #    and update the total waybill progress with the original total.
+        try:
+            # First, update waybill progress with the FULL scanned quantity
+            self.logic.allocate(matching_lines, total_scanned_qty)
+            
+            # Then, determine the destination (AMO/KANBAN) for the remainder
+            if qty_remaining_from_scan > 0:
+                 # This call is for display/logging purposes ONLY.
+                 # We create a temporary, disconnected set of lines to calculate this.
+                temp_lines = [Line(rowid=ln.rowid, part=ln.part, qty_total=ln.qty_total, subinv=ln.subinv, waybill_number=ln.waybill_number, scanned=ln.scanned - qty_remaining_from_scan) for ln in matching_lines]
+                standard_allocations = self.logic.allocate(temp_lines, qty_remaining_from_scan)
+            else:
+                standard_allocations = {}
+
+        except ValueError:
+            messagebox.showwarning("Over scan", "Quantity exceeds expected total for this part on the waybill.")
+            self._alert_beep()
+            return
+        
+        # 3. Update UI and Log everything
+        self._update_alloc_labels(standard_allocations)
+        for ln in matching_lines:
             self._update_line_widgets(ln)
-        self._update_alloc_labels(allocations)
-        self._update_last_entry(part, qty, allocations)
+
+        combined_allocations = {**bo_allocations, **standard_allocations}
+        self._update_last_entry(part, total_scanned_qty, combined_allocations)
+
         if self.session_id is not None:
-            for ln in matching:
-                delta = deltas[ln.rowid]
-                if delta:
-                    self.dm.insert_scan_event(
-                        self.session_id,
-                        ln.waybill_number,
-                        part,
-                        delta,
-                        raw_scan=raw,
-                    )
+            # Convert the dictionary to a JSON string for storage
+            alloc_details_str = json.dumps(combined_allocations)
+            self.dm.insert_scan_event(
+                self.session_id,
+                matching_lines[0].waybill_number,
+                part,
+                total_scanned_qty,
+                raw_scan=raw,
+                allocation_details=alloc_details_str # Pass the new data here
+            )
+
         self.refresh_progress_table()
         self.scan_var.set("")
         self.qty_var.set(1)
 
+        # 4. Check for waybill completion
         if all(line.remaining() == 0 for line in self.lines):
             self.dm.mark_waybill_terminated(self.active_waybill, self.user_id)
             all_done_progress = self._get_waybill_progress()

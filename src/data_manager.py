@@ -300,14 +300,15 @@ class DataManager:
         qty: int,
         timestamp: Optional[str] = None,
         raw_scan: str = "",
+        allocation_details: str = "",
     ) -> None:
         if timestamp is None:
             timestamp = datetime.now().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO scan_events (session_id, waybill_number, part_number, scanned_qty, timestamp, raw_scan) VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, waybill_number, part_number, qty, timestamp, raw_scan),
+                "INSERT INTO scan_events (session_id, waybill_number, part_number, scanned_qty, timestamp, raw_scan, allocation_details) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (session_id, waybill_number, part_number, qty, timestamp, raw_scan, allocation_details),
             )
             conn.commit()
 
@@ -428,10 +429,9 @@ class DataManager:
             rows = cur.fetchall()
         return rows
     
-    def insert_bo_items(self, items: Iterable[Dict[str, any]]) -> Tuple[int, int]: # type: ignore
-        """Insert or update records in the bo_items table.
-
-        Returns a tuple of (created_count, updated_count).
+    def insert_bo_items(self, items: Iterable[Dict[str, any]]) -> Tuple[int, int]:
+        """
+        Insert or update records in the bo_items table, preserving fulfillment status.
         """
         created = 0
         updated = 0
@@ -439,13 +439,19 @@ class DataManager:
             cur = conn.cursor()
             for item in items:
                 cur.execute(
-                    "SELECT id, pick_status FROM bo_items WHERE go_item = ? AND part_number = ?",
+                    "SELECT id, pick_status, qty_fulfilled FROM bo_items WHERE go_item = ? AND part_number = ?",
                     (item["go_item"], item["part_number"]),
                 )
                 existing = cur.fetchone()
                 if existing:
-                    # Preserve existing pick_status when updating
+                    # Preserve existing status and fulfilled quantity
                     item["pick_status"] = existing[1]
+                    item["qty_fulfilled"] = existing[2]
+
+                    # Ensure qty_fulfilled is not greater than the new required qty
+                    if item["qty_fulfilled"] > item["qty_req"]:
+                        item["qty_fulfilled"] = item["qty_req"]
+
                     update_cols = ", ".join(f"{key} = ?" for key in item)
                     params = list(item.values()) + [existing[0]]
                     cur.execute(f"UPDATE bo_items SET {update_cols} WHERE id = ?", params)
@@ -459,3 +465,123 @@ class DataManager:
                     created += 1
             conn.commit()
         return created, updated
+    
+    def get_open_bo_lines(self, part_number: str) -> List[Tuple[int, str, int, int]]:
+        """
+        Fetches all open back-order lines for a part number.
+        Returns a list of tuples: [(id, go_item, qty_req, qty_fulfilled), ...].
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, go_item, qty_req, qty_fulfilled FROM bo_items WHERE part_number = ? AND pick_status != 'PICKING' ORDER BY id",
+                (part_number.upper(),),
+            )
+            return cur.fetchall()
+
+    def update_bo_item_status(self, bo_item_id: int, status: str) -> None:
+        """Update the pick_status of a specific back-order item."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE bo_items SET pick_status = ? WHERE id = ?",
+                (status, bo_item_id),
+            )
+            conn.commit()
+
+    def get_session_allocations(self, session_id: int) -> Dict[str, str]:
+        """
+        Aggregates allocation details from a session for each part.
+        Returns a dictionary mapping {part_number: "allocation_string"}.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT part_number, allocation_details FROM scan_events WHERE session_id = ? AND allocation_details IS NOT NULL",
+                (session_id,)
+            )
+
+            part_allocations = {}
+            for part_number, details_str in cur.fetchall():
+                # The details are stored as '{"BO": 14, "KANBAN": 46}'
+                # We need to parse this and aggregate it.
+                import json
+                try:
+                    details = json.loads(details_str)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                if part_number not in part_allocations:
+                    part_allocations[part_number] = {}
+
+                for key, value in details.items():
+                    part_allocations[part_number][key] = part_allocations[part_number].get(key, 0) + value
+
+            # Convert the aggregated dicts into final strings
+            final_strings = {}
+            for part, alloc_dict in part_allocations.items():
+                final_strings[part] = ", ".join([f"{k}:{v}" for k, v in alloc_dict.items()])
+
+            return final_strings
+    
+    def clear_non_picking_bo_items(self) -> int:
+        """
+        Deletes all BO items that are NOT in a 'PICKING' state.
+        This is the pre-import cleanup step.
+        Returns the number of rows deleted.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM bo_items WHERE pick_status != 'PICKING'")
+            deleted_count = cur.rowcount
+            conn.commit()
+        return deleted_count if deleted_count != -1 else 0
+
+    def reconcile_picking_items(self, active_keys: List[Tuple[str, str]]) -> int:
+        """
+        Deletes 'PICKING' items that are no longer in the active report.
+        This is the post-import cleanup step.
+        Returns the number of rows deleted.
+        """
+        if not active_keys:
+            # If there are no active keys, all 'PICKING' items are stale.
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM bo_items WHERE pick_status = 'PICKING'")
+                return cur.rowcount if cur.rowcount != -1 else 0
+
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            # Create a temporary table of active keys for efficient lookup
+            cur.execute("CREATE TEMP TABLE active_bo_keys (go_item TEXT, part_number TEXT, PRIMARY KEY(go_item, part_number))")
+            cur.executemany("INSERT INTO active_bo_keys (go_item, part_number) VALUES (?, ?)", active_keys)
+            
+            # Delete PICKING items that are not in the active list
+            cur.execute("""
+                DELETE FROM bo_items
+                WHERE pick_status = 'PICKING' 
+                AND (go_item, part_number) NOT IN (SELECT go_item, part_number FROM active_bo_keys)
+            """)
+            deleted_count = cur.rowcount
+            conn.commit()
+
+        return deleted_count if deleted_count != -1 else 0
+    
+    def update_bo_fulfillment(self, bo_item_id: int, newly_fulfilled_qty: int) -> None:
+        """
+        Updates the fulfillment status of a BO item.
+        Increments qty_fulfilled and sets status to RECEIVED.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            # Increment the fulfilled quantity
+            cur.execute(
+                "UPDATE bo_items SET qty_fulfilled = qty_fulfilled + ? WHERE id = ?",
+                (newly_fulfilled_qty, bo_item_id),
+            )
+            # Set status to RECEIVED, indicating it was fulfilled at the dock
+            cur.execute(
+                "UPDATE bo_items SET pick_status = 'RECEIVED' WHERE id = ?",
+                (bo_item_id,),
+            )
+            conn.commit()

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS scan_events (
     scanned_qty INTEGER NOT NULL,
     timestamp TEXT NOT NULL,
     raw_scan TEXT,
+    allocation_details TEXT, 
     FOREIGN KEY(session_id) REFERENCES scan_sessions(session_id)
 );
 
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS bo_items (
     discrete_job TEXT,
     part_number TEXT NOT NULL,
     qty_req INTEGER NOT NULL,
+    qty_fulfilled INTEGER NOT NULL DEFAULT 0, -- Add this new column
     pick_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
     flow_status TEXT,
     last_import_date TEXT NOT NULL,
