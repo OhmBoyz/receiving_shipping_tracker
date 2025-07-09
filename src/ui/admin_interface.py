@@ -17,6 +17,8 @@ from src.logic import waybill_import, part_identifier_import
 from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 
+from src.logic.bo_report import import_bo_files
+
 logger = logging.getLogger(__name__)
 
 # DB_PATH = "receiving_tracker.db"
@@ -138,6 +140,14 @@ class AdminWindow(ctk.CTk):
         )
         id_btn.pack(pady=(0, 20))
 
+        # --- ADD THIS NEW BUTTON ---
+        bo_btn = ctk.CTkButton(
+            self.tab_upload,
+            text="Import BO Reports (REDCON & BACKLOG)",
+            command=self._choose_bo_reports,
+        )
+        bo_btn.pack(pady=(20, 0))
+
     def _choose_waybill(self) -> None:
         path = filedialog.askopenfilename(
             title="Select Waybill", filetypes=[("Excel files", "*.xlsx *.xls")]
@@ -172,7 +182,37 @@ class AdminWindow(ctk.CTk):
             "Import complete",
             f"{inserted} records inserted from {Path(path).name}",
         )
+    def _choose_bo_reports(self) -> None:
+        """Handles the selection and import of BO report files."""
+        messagebox.showinfo("Select BACKLOG File", "First, please select the BACKLOG Excel file.")
+        backlog_path = filedialog.askopenfilename(
+            title="Select BACKLOG Excel File", filetypes=[("Excel files", "*.xlsx *.xls")]
+        )
+        if not backlog_path:
+            messagebox.showwarning("Cancelled", "BACKLOG file selection cancelled.")
+            return
 
+        messagebox.showinfo("Select REDCON File", "Next, please select the REDCON Excel file.")
+        redcon_path = filedialog.askopenfilename(
+            title="Select REDCON Excel File", filetypes=[("Excel files", "*.xlsx *.xls")]
+        )
+        if not redcon_path:
+            messagebox.showwarning("Cancelled", "REDCON file selection cancelled.")
+            return
+
+        try:
+            created, updated = import_bo_files(backlog_path, redcon_path, self.db_path)
+            messagebox.showinfo(
+                "BO Import Complete",
+                f"Successfully imported BO data:\n\n"
+                f"New Records Created: {created}\n"
+                f"Existing Records Updated: {updated}"
+            )
+            logger.info(f"BO Import successful: {created} created, {updated} updated.")
+        except Exception as exc:
+            logger.exception("BO report import failed.")
+            messagebox.showerror("BO Import Failed", f"An error occurred: {exc}")
+            
     # ---------------------------- User Management ---------------------------
     def _build_user_tab(self) -> None:
         self.users: List[tuple[int, str, str]] = []

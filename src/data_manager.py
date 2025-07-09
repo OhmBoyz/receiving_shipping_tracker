@@ -427,3 +427,35 @@ class DataManager:
             cur.execute(query, params)
             rows = cur.fetchall()
         return rows
+    
+    def insert_bo_items(self, items: Iterable[Dict[str, any]]) -> Tuple[int, int]: # type: ignore
+        """Insert or update records in the bo_items table.
+
+        Returns a tuple of (created_count, updated_count).
+        """
+        created = 0
+        updated = 0
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            for item in items:
+                cur.execute(
+                    "SELECT id, pick_status FROM bo_items WHERE go_item = ? AND part_number = ?",
+                    (item["go_item"], item["part_number"]),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    # Preserve existing pick_status when updating
+                    item["pick_status"] = existing[1]
+                    update_cols = ", ".join(f"{key} = ?" for key in item)
+                    params = list(item.values()) + [existing[0]]
+                    cur.execute(f"UPDATE bo_items SET {update_cols} WHERE id = ?", params)
+                    updated += 1
+                else:
+                    # Insert new record
+                    cols = ", ".join(item.keys())
+                    placeholders = ", ".join("?" for _ in item)
+                    params = list(item.values())
+                    cur.execute(f"INSERT INTO bo_items ({cols}) VALUES ({placeholders})", params)
+                    created += 1
+            conn.commit()
+        return created, updated

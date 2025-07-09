@@ -73,3 +73,18 @@ CREATE TABLE IF NOT EXISTS terminated_waybills (
     terminated_at TEXT NOT NULL,
     user_id INTEGER NOT NULL
 );
+
+-- Back-order items
+CREATE TABLE IF NOT EXISTS bo_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    go_item TEXT NOT NULL,
+    oracle TEXT,
+    item_number TEXT,
+    discrete_job TEXT,
+    part_number TEXT NOT NULL,
+    qty_req INTEGER NOT NULL,
+    pick_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+    flow_status TEXT,
+    last_import_date TEXT NOT NULL,
+    UNIQUE(go_item, part_number)
+);
