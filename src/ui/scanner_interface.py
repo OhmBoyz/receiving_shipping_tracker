@@ -21,6 +21,10 @@ from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 from src.logic.scanning import Line, ScannerLogic
 
+from src.logic import picklist_generator
+
+from src.ui.picklist_update_interface import PicklistUpdateWindow
+
 PART_IDENTIFIERS_CSV = "data/part_ids.csv"
 
 logger = logging.getLogger(__name__)
@@ -63,6 +67,7 @@ class ShipperWindow(ctk.CTk):
         self.logic = ScannerLogic(self.dm, csv_path)
         self.user_id = user_id
         self.session_id: Optional[int] = None
+        self.affected_go_items = set()
         self._summary_recorded: bool = False
         self.bo_df: Optional[pd.DataFrame] = None
         self.active_waybill: Optional[str] = None # Will hold the currently loaded waybill
@@ -197,10 +202,18 @@ class ShipperWindow(ctk.CTk):
         self.scan_entry.bind("<KeyRelease>", self._show_suggestions)
         self.suggestion_win = None
         self.suggestion_list = None
+        update_pick_btn = ctk.CTkButton(
+            controls, 
+            text="Update Warehouse Pick", 
+            command=self._open_picklist_updater,
+            font=self.font_controls
+        )
+        update_pick_btn.grid(row=0, column=5, padx=(20, 0))
         finish_btn = ctk.CTkButton(controls, text="Finish Waybill", command=self.manual_finish, font=self.font_controls)
         finish_btn.grid(row=0, column=3, padx=(20, 0))
         logout_btn = ctk.CTkButton(controls, text="End Session", command=self.manual_logout, font=self.font_controls)
         logout_btn.grid(row=0, column=4, padx=(10, 0))
+        
 
         # --- Initial Load ---
         self.lines: List[Line] = []
@@ -428,6 +441,7 @@ class ShipperWindow(ctk.CTk):
 
     def manual_logout(self) -> None:
         if messagebox.askyesno("Confirm", "End scanning session and exit?"):
+            self.record_partial_summary()
             self._finish_session()
 
     def _record_summary(self) -> None:
@@ -470,6 +484,7 @@ class ShipperWindow(ctk.CTk):
     def record_partial_summary(self) -> None:
         if self.session_id is None or self._summary_recorded:
             return
+        self._process_automated_picklists()
         if self.active_waybill:
             self._record_summary()
         self.dm.end_session(self.session_id)
@@ -639,6 +654,9 @@ class ShipperWindow(ctk.CTk):
                     f"Please set them aside in the BO Staging Area."
                 )
                 self._flash_alloc_label(self.bo_label, total_bo_qty, "yellow")
+                first_go_item = open_bo_lines[0][1] # e.g., 'CSVQ005405-002S1'
+                go_number = first_go_item.split('-')[0]
+                self.affected_go_items.add(go_number)
 
         # 2. Allocate the remaining quantity to the waybill (AMO/KANBAN)
         #    and update the total waybill progress with the original total.
@@ -693,6 +711,63 @@ class ShipperWindow(ctk.CTk):
                     self._finish_session()
             else:
                 messagebox.showinfo("Waybill Finished", "Current waybill completed. Select another or show all.")
+    
+    def _process_automated_picklists(self) -> None:
+        """
+        Processes affected GO numbers at the end of a session to generate
+        new or updated picklists automatically.
+        """
+        if not self.affected_go_items:
+            return
+
+        for go_number in self.affected_go_items:
+            all_lines_for_go = self.dm.get_all_items_for_go(go_number)
+            if not all_lines_for_go:
+                continue
+
+            status_summary = {item['pick_status'] for item in all_lines_for_go}
+
+            # Determine which scenario we are in
+            is_updated_job = 'IN_PROGRESS' in status_summary and 'NOT_STARTED' in status_summary
+            is_fresh_job = 'IN_PROGRESS' not in status_summary
+
+            if is_fresh_job or is_updated_job:
+                # Generate the HTML. Add a title for updated picklists.
+                html_content = picklist_generator.create_picklist_html(all_lines_for_go)
+                if is_updated_job:
+                    html_content = html_content.replace(
+                        "<td class=\"report-title\">SHORTAGE JOB REPORT</td>",
+                        "<td class=\"report-title\">** UPDATED **<br>SHORTAGE JOB REPORT</td>"
+                    )
+
+                # Preview the picklist
+                picklist_generator.preview_picklist(html_content)
+
+                # Prepare lists of IDs for status updates
+                ids_to_in_progress = []
+                ids_to_completed = []
+
+                for item in all_lines_for_go:
+                    is_fulfilled = item['qty_fulfilled'] >= item['qty_req']
+                    
+                    if is_fulfilled and item['pick_status'] != 'COMPLETED':
+                        ids_to_completed.append(item['id'])
+                    elif not is_fulfilled and item['pick_status'] == 'NOT_STARTED':
+                        ids_to_in_progress.append(item['id'])
+                
+                # Perform batch updates
+                if ids_to_in_progress:
+                    self.dm.update_bo_items_status(ids_to_in_progress, "IN_PROGRESS")
+                if ids_to_completed:
+                    self.dm.update_bo_items_status(ids_to_completed, "COMPLETED")
+
+        # Clear the set for the next session
+        self.affected_go_items.clear()
+    
+    def _open_picklist_updater(self):
+        """Opens the toplevel window for updating warehouse picks."""
+        updater = PicklistUpdateWindow(self, self.dm)
+        updater.grab_set() # Keep the window on top
 
 
 def start_shipper_interface(

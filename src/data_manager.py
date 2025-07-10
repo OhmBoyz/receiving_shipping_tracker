@@ -569,22 +569,18 @@ class DataManager:
     
     def update_bo_fulfillment(self, bo_item_id: int, newly_fulfilled_qty: int) -> None:
         """
-        Updates the fulfillment status of a BO item.
-        Increments qty_fulfilled and sets status to RECEIVED.
+        Atomically increments the qty_fulfilled for a specific back-order item.
+        This method does NOT change the pick_status.
         """
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            # Increment the fulfilled quantity
+            # Only increment the fulfilled quantity. The status is handled later.
             cur.execute(
                 "UPDATE bo_items SET qty_fulfilled = qty_fulfilled + ? WHERE id = ?",
                 (newly_fulfilled_qty, bo_item_id),
             )
-            # Set status to RECEIVED, indicating it was fulfilled at the dock
-            cur.execute(
-                "UPDATE bo_items SET pick_status = 'RECEIVED' WHERE id = ?",
-                (bo_item_id,),
-            )
             conn.commit()
+
 
     def get_next_urgent_picklist_items(self) -> List[Dict]:
         """
@@ -676,3 +672,59 @@ class DataManager:
                 ORDER BY top_urgency ASC
             """)
             return cur.fetchall()
+
+    def get_go_number_status_summary(self, go_number: str) -> Dict[str, int]:
+        """
+        Returns a dictionary summarizing the pick_status counts for a given GO number.
+        e.g., {'NOT_STARTED': 5, 'IN_PROGRESS': 2}
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT pick_status, COUNT(*) FROM bo_items WHERE go_item LIKE ? GROUP BY pick_status",
+                (f"{go_number}-%",)
+            )
+            return dict(cur.fetchall())
+    
+    def get_inprogress_lines_for_go(self, go_number: str) -> List[Dict]:
+        """Fetches all lines for a GO number that are IN_PROGRESS and not yet complete."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            # Find lines that are part of an active picklist but not yet fully fulfilled
+            cur.execute(
+                "SELECT * FROM bo_items WHERE go_item LIKE ? AND pick_status = 'IN_PROGRESS' AND qty_fulfilled < qty_req ORDER BY item_number",
+                (f"{go_number}-%",)
+            )
+            return [dict(row) for row in cur.fetchall()]
+    
+    def batch_update_bo_fulfillment(self, updates: List[Tuple[int, int]]) -> None:
+        """
+        Takes a list of (bo_item_id, picked_qty) and updates fulfillment.
+        Sets status to COMPLETED if fully fulfilled.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            for bo_item_id, picked_qty in updates:
+                # Increment the fulfilled quantity
+                cur.execute(
+                    "UPDATE bo_items SET qty_fulfilled = qty_fulfilled + ? WHERE id = ?",
+                    (picked_qty, bo_item_id),
+                )
+            
+            # After all updates, check which lines are now complete
+            # Get all IDs that were just updated
+            updated_ids = tuple(item[0] for item in updates)
+            cur.execute(
+                f"SELECT id FROM bo_items WHERE id IN ({','.join('?' for _ in updated_ids)}) AND qty_fulfilled >= qty_req",
+                updated_ids
+            )
+            completed_ids = [row[0] for row in cur.fetchall()]
+            
+            # Update status for completed items
+            if completed_ids:
+                cur.executemany(
+                    "UPDATE bo_items SET pick_status = 'COMPLETED' WHERE id = ?",
+                    [(cid,) for cid in completed_ids]
+                )
+            conn.commit()

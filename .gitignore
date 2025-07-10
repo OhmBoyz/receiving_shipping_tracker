@@ -4,6 +4,7 @@ __pycache__/
 
 # Ignore local database and log files
 receiving_tracker.db
+old_receiving_tracker.db
 tracker.log
 
 # Ignore misc scripts
