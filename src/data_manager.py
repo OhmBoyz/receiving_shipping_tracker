@@ -474,7 +474,7 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, go_item, qty_req, qty_fulfilled FROM bo_items WHERE part_number = ? AND pick_status != 'PICKING' ORDER BY id",
+                "SELECT id, go_item, qty_req, qty_fulfilled FROM bo_items WHERE part_number = ? AND pick_status = 'NOT_STARTED' ORDER BY redcon_status",
                 (part_number.upper(),),
             )
             return cur.fetchall()
@@ -585,3 +585,37 @@ class DataManager:
                 (bo_item_id,),
             )
             conn.commit()
+
+    def get_next_urgent_picklist_items(self) -> List[Dict]:
+        """
+        Finds the most urgent 'go_item' with 'NOT_STARTED' parts and returns
+        all lines associated with it for picklist generation.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            # Use a row factory to get dictionary-like results
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            # Step 1: Find the single most urgent go_item
+            cur.execute("""
+                SELECT go_item
+                FROM bo_items
+                WHERE pick_status = 'NOT_STARTED'
+                ORDER BY redcon_status ASC, id ASC
+                LIMIT 1
+            """)
+            result = cur.fetchone()
+            if not result:
+                return []  # No items are waiting to be picked
+
+            most_urgent_go_item = result["go_item"]
+
+            # Step 2: Fetch all lines for that specific go_item
+            cur.execute(
+                "SELECT * FROM bo_items WHERE go_item = ?",
+                (most_urgent_go_item,)
+            )
+            
+            # Convert rows to standard dictionaries
+            rows = [dict(row) for row in cur.fetchall()]
+            return rows

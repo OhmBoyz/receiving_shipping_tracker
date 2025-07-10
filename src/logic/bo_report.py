@@ -56,16 +56,25 @@ def read_redcon_df(file_path: str | Path) -> pd.DataFrame:
     """Reads and processes the REDCON Excel file."""
     try:
         df = pd.read_excel(file_path, sheet_name='Export')
-        cg = _find_column(df.columns, "GO ITEM")
-        cp = _find_column(df.columns, "PART NUMBER")
-        cf = _find_column(df.columns, "FLOW STATUS")
-        co = _find_column(df.columns, "ORACLE NUMBER")
+        # Column headers to find
+        c_go_item = _find_column(df.columns, "GO ITEM")
+        c_part_num = _find_column(df.columns, "PART NUMBER")
+        c_flow_status = _find_column(df.columns, "FLOW STATUS")
+        c_oracle_num = _find_column(df.columns, "ORACLE NUMBER")
+        c_redcon_status = _find_column(df.columns, "REDCON") # For urgency
+        c_boh_plant = _find_column(df.columns, "BOH PLANT") # AMO Stock
+        c_boh_surplus = _find_column(df.columns, "BOH SURPLUS") # Surplus Stock
+        c_kb_size = _find_column(df.columns, "KB SIZE") # Kanban Stock
 
         rc_norm = pd.DataFrame({
-            "go_item": df[cg].astype(str),
-            "part_number": df[cp].astype(str).str.rstrip("."),
-            "flow_status": df[cf].fillna("AWAITING_SHIPPING").astype(str),
-            "oracle_rc": df[co].apply(_clean_str),
+            "go_item": df[c_go_item].astype(str),
+            "part_number": df[c_part_num].astype(str).str.rstrip("."),
+            "flow_status": df[c_flow_status].fillna("AWAITING_SHIPPING").astype(str),
+            "oracle_rc": df[c_oracle_num].apply(_clean_str),
+            "redcon_status": pd.to_numeric(df[c_redcon_status], errors='coerce').fillna(99),
+            "amo_stock_qty": pd.to_numeric(df[c_boh_plant], errors='coerce').fillna(0).astype(int),
+            "kanban_stock_qty": pd.to_numeric(df[c_kb_size], errors='coerce').fillna(0).astype(int),
+            "surplus_stock_qty": pd.to_numeric(df[c_boh_surplus], errors='coerce').fillna(0).astype(int),
         })
 
         return (
@@ -100,6 +109,10 @@ def sync_bo_data(backlog_df: pd.DataFrame, redcon_df: pd.DataFrame) -> Tuple[Lis
             "part_number": part_number,
             "qty_req": int(bl_row["qty_req"]),
             "flow_status": _clean_str(rc_row.get("flow_status", "AWAITING_SHIPPING")),
+            "redcon_status": int(rc_row["redcon_status"]), # Urgency
+            "amo_stock_qty": int(rc_row["amo_stock_qty"]),
+            "kanban_stock_qty": int(rc_row["kanban_stock_qty"]),
+            "surplus_stock_qty": int(rc_row["surplus_stock_qty"]),
             "last_import_date": datetime.now().date().isoformat(),
         }
         records_to_insert.append(payload)

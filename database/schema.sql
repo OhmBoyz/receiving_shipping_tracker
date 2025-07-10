@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS terminated_waybills (
     user_id INTEGER NOT NULL
 );
 
--- Back-order items
+-- In the bo_items table definition
 CREATE TABLE IF NOT EXISTS bo_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     go_item TEXT NOT NULL,
@@ -84,7 +84,11 @@ CREATE TABLE IF NOT EXISTS bo_items (
     discrete_job TEXT,
     part_number TEXT NOT NULL,
     qty_req INTEGER NOT NULL,
-    qty_fulfilled INTEGER NOT NULL DEFAULT 0, -- Add this new column
+    qty_fulfilled INTEGER NOT NULL DEFAULT 0,
+    amo_stock_qty INTEGER NOT NULL DEFAULT 0,
+    kanban_stock_qty INTEGER NOT NULL DEFAULT 0,
+    surplus_stock_qty INTEGER NOT NULL DEFAULT 0,
+    redcon_status INTEGER NOT NULL DEFAULT 99,
     pick_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
     flow_status TEXT,
     last_import_date TEXT NOT NULL,
