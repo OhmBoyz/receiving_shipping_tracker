@@ -11,13 +11,15 @@ from typing import Dict, Iterable, List, Optional
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
-
+import tkinter as tk
 from src.logic import waybill_import, part_identifier_import
 
 from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 
 from src.logic.bo_report import import_bo_files
+
+from src.logic import picklist_generator
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +120,14 @@ class AdminWindow(ctk.CTk):
         self.tab_users = tabs.add("User Management")
         self.tab_summary = tabs.add("Scan Summaries")
         self.tab_waybill = tabs.add("Waybill Manager")
+        self.tab_fulfillment = tabs.add("BO Fulfillment")
         self.tab_db = tabs.add("Database Viewer")
 
         self._build_upload_tab()
         self._build_user_tab()
         self._build_summary_tab()
         self._build_waybill_tab()
+        self._build_fulfillment_tab()
         self._build_db_tab()
 
     # ---------------------------- Waybill Upload ----------------------------
@@ -643,6 +647,143 @@ class AdminWindow(ctk.CTk):
         export_summary_to_csv(self.summary_rows, path)
         messagebox.showinfo("Exported", f"Summary exported to {Path(path).name}")
 
+    def _build_fulfillment_tab(self) -> None:
+        """Builds the enhanced UI for the Back-Order Fulfillment tab."""
+        self.fulfillment_tab = self.tab_fulfillment
+        self.fulfillment_tab.grid_columnconfigure(1, weight=1)
+        self.fulfillment_tab.grid_rowconfigure(0, weight=1)
+
+        # --- Left Pane: Tabbed lists for jobs ---
+        left_pane = ctk.CTkTabview(self.fulfillment_tab)
+        left_pane.grid(row=0, column=0, padx=10, pady=10, sticky="ns")
+        
+        self.urgent_jobs_tab = left_pane.add("Urgent Jobs")
+        self.inprogress_jobs_tab = left_pane.add("Active Picklists")
+
+        self.urgent_listbox = tk.Listbox(self.urgent_jobs_tab, width=40)
+        self.urgent_listbox.pack(fill="both", expand=True)
+        self.urgent_listbox.bind("<<ListboxSelect>>", lambda e: self._on_bo_job_select(self.urgent_listbox))
+
+        self.inprogress_listbox = tk.Listbox(self.inprogress_jobs_tab, width=40)
+        self.inprogress_listbox.pack(fill="both", expand=True)
+        self.inprogress_listbox.bind("<<ListboxSelect>>", lambda e: self._on_bo_job_select(self.inprogress_listbox))
+
+        # --- Right Pane: Details and Actions ---
+        right_pane = ctk.CTkFrame(self.fulfillment_tab)
+        right_pane.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        right_pane.grid_rowconfigure(1, weight=1)
+        right_pane.grid_columnconfigure(0, weight=1)
+
+        # Action Buttons
+        action_frame = ctk.CTkFrame(right_pane, fg_color="transparent")
+        action_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        
+        self.generate_picklist_btn = ctk.CTkButton(action_frame, text="Generate Picklist", command=self._generate_manual_picklist, state="disabled")
+        self.generate_picklist_btn.pack(side="left", padx=5)
+        
+        self.reprint_picklist_btn = ctk.CTkButton(action_frame, text="Reprint Updated Picklist", command=self._reprint_manual_picklist, state="disabled")
+        self.reprint_picklist_btn.pack(side="left", padx=5)
+        
+        self.selected_go_number = None
+
+        # Details Treeview
+        self.bo_details_tree = ttk.Treeview(right_pane, show="headings")
+        self.bo_details_tree.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+
+        self._refresh_bo_lists()
+    
+    def _refresh_bo_lists(self) -> None:
+        """Refreshes both listboxes with current job statuses."""
+        # Urgent Jobs (Not Started)
+        self.urgent_listbox.delete(0, tk.END)
+        urgent_jobs = self.dm.get_urgent_go_numbers() 
+        for go_num, redcon_status in urgent_jobs:
+            self.urgent_listbox.insert(tk.END, f"{go_num} (Urgency: {redcon_status})")
+        
+        # In-Progress Jobs
+        self.inprogress_listbox.delete(0, tk.END)
+        inprogress_jobs = self.dm.get_inprogress_go_numbers()
+        for go_num, redcon_status in inprogress_jobs:
+            self.inprogress_listbox.insert(tk.END, f"{go_num} (Urgency: {redcon_status})")
+    
+
+    def _on_bo_job_select(self, listbox_widget: tk.Listbox):
+        """Handles selection in either listbox."""
+        if not listbox_widget.curselection():
+            return
+
+        # Clear selection in the other listbox
+        if listbox_widget is self.urgent_listbox:
+            self.inprogress_listbox.selection_clear(0, tk.END)
+            self.generate_picklist_btn.configure(state="normal")
+            self.reprint_picklist_btn.configure(state="disabled")
+        else:
+            self.urgent_listbox.selection_clear(0, tk.END)
+            self.generate_picklist_btn.configure(state="disabled")
+            self.reprint_picklist_btn.configure(state="normal")
+        
+        selection = listbox_widget.get(listbox_widget.curselection())
+        self.selected_go_number = selection.split(" ")[0]
+        self._populate_bo_details(self.selected_go_number)
+
+    def _populate_bo_details(self, go_number: str):
+        """Fills the treeview with all lines for the selected GO number."""
+        for item in self.bo_details_tree.get_children():
+            self.bo_details_tree.delete(item)
+
+        items = self.dm.get_all_items_for_go(go_number)
+        
+        columns = [
+            "Item #", "Part #", "Status", 
+            "Qty Req", "Qty Fulfilled", "Qty Open", 
+            "AMO Stock", "KB Stock", "Surplus Stock"
+        ]
+        self.bo_details_tree.configure(columns=columns)
+        for col in columns:
+            self.bo_details_tree.heading(col, text=col)
+            self.bo_details_tree.column(col, width=100, anchor="center")
+        
+        for item in items:
+            open_qty = item.get('qty_req', 0) - item.get('qty_fulfilled', 0)
+            self.bo_details_tree.insert("", "end", values=(
+                item.get('item_number', ''),
+                item.get('part_number', ''),
+                item.get('pick_status', ''),
+                item.get('qty_req', 0),
+                item.get('qty_fulfilled', 0),
+                open_qty,
+                item.get('amo_stock_qty', 0),
+                item.get('kanban_stock_qty', 0),
+                item.get('surplus_stock_qty', 0),
+            ))
+
+    def _generate_manual_picklist(self, reprint=False):
+        """Generates or reprints a picklist for the selected GO."""
+        if not self.selected_go_number:
+            return
+
+        picklist_items = self.dm.get_all_items_for_go(self.selected_go_number)
+        if not picklist_items:
+            messagebox.showerror("Error", "Could not retrieve items for this GO number.")
+            return
+
+        html_content = picklist_generator.create_picklist_html(picklist_items)
+        picklist_generator.preview_picklist(html_content)
+        
+        if not reprint:
+            item_ids_to_update = [item['id'] for item in picklist_items if item['pick_status'] == 'NOT_STARTED']
+            if item_ids_to_update:
+                self.dm.update_bo_items_status(item_ids_to_update, "IN_PROGRESS")
+            messagebox.showinfo("Picklist Generated", f"Picklist for {self.selected_go_number} has been generated and status updated to IN_PROGRESS.")
+        else:
+             messagebox.showinfo("Picklist Reprinted", f"Picklist for {self.selected_go_number} has been reprinted with the latest information.")
+
+        self._refresh_bo_lists()
+        self._populate_bo_details(self.selected_go_number) # Refresh details view
+
+    def _reprint_manual_picklist(self):
+        self._generate_manual_picklist(reprint=True)
+    
     # --------------------------- Database Viewer ---------------------------
     def _build_db_tab(self) -> None:
         self.dm = DataManager(self.db_path)

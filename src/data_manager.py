@@ -619,3 +619,60 @@ class DataManager:
             # Convert rows to standard dictionaries
             rows = [dict(row) for row in cur.fetchall()]
             return rows
+    
+    def get_urgent_go_numbers(self) -> List[Tuple[str, int]]:
+        """Gets a list of unique GO numbers that have items in 'NOT_STARTED' status, ordered by urgency."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            # This query finds the highest urgency (lowest redcon_status) for each GO group
+            # that contains at least one 'NOT_STARTED' item.
+            cur.execute("""
+                SELECT go_num, MIN(redcon_status) as top_urgency
+                FROM (
+                    SELECT SUBSTR(go_item, 1, INSTR(go_item, '-') - 1) as go_num, redcon_status
+                    FROM bo_items
+                    WHERE pick_status = 'NOT_STARTED'
+                )
+                GROUP BY go_num
+                ORDER BY top_urgency ASC
+            """)
+            return cur.fetchall()
+    
+    def update_bo_items_status(self, item_ids: List[int], status: str) -> None:
+        """Updates the pick_status for a list of bo_item IDs."""
+        if not item_ids:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            # Creates a list of tuples for executemany, e.g., [('IN_PROGRESS', 1), ('IN_PROGRESS', 2)]
+            params = [(status, item_id) for item_id in item_ids]
+            cur.executemany("UPDATE bo_items SET pick_status = ? WHERE id = ?", params)
+            conn.commit()
+
+    def get_all_items_for_go(self, go_number: str) -> List[Dict]:
+        """Fetches all bo_items for a given GO number prefix."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM bo_items WHERE go_item LIKE ?",
+                (f"{go_number}-%",)
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_inprogress_go_numbers(self) -> List[Tuple[str, int]]:
+        """Gets a list of unique GO numbers that have items in 'IN_PROGRESS' status."""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT go_num, MIN(redcon_status) as top_urgency
+                FROM (
+                    SELECT SUBSTR(go_item, 1, INSTR(go_item, '-') - 1) as go_num, redcon_status
+                    FROM bo_items
+                    WHERE pick_status = 'IN_PROGRESS'
+                )
+                WHERE go_num NOT IN (SELECT SUBSTR(go_item, 1, INSTR(go_item, '-') - 1) FROM bo_items WHERE pick_status = 'NOT_STARTED')
+                GROUP BY go_num
+                ORDER BY top_urgency ASC
+            """)
+            return cur.fetchall()
