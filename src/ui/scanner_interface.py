@@ -21,6 +21,8 @@ from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
 from src.logic.scanning import Line, ScannerLogic
 
+from src.config import SHIPPER_PRINTER
+
 from src.logic import picklist_generator
 
 from src.ui.picklist_update_interface import PicklistUpdateWindow
@@ -436,13 +438,22 @@ class ShipperWindow(ctk.CTk):
         self.destroy()
 
     def manual_finish(self) -> None:
+        """Called by the 'Finish Waybill' button."""
         if messagebox.askyesno("Confirm", "Finish current waybill and End Session?"):
+            # Mark the specific waybill as finished if one is active
+            if self.active_waybill:
+                self.dm.mark_waybill_terminated(self.active_waybill, self.user_id)
             self._finish_session()
 
     def manual_logout(self) -> None:
-        if messagebox.askyesno("Confirm", "End scanning session and exit?"):
-            self.record_partial_summary()
-            self._finish_session()
+        """Called by the 'End Session' button or closing the window."""
+        # Check if any work was done before showing the confirmation
+        if self.session_id and not self._summary_recorded:
+            if messagebox.askyesno("Confirm", "End scanning session and exit?"):
+                self._finish_session()
+        else:
+            # If no work was done, just close
+            self.destroy()
 
     def _record_summary(self) -> None:
         if self.session_id is None:
@@ -725,11 +736,12 @@ class ShipperWindow(ctk.CTk):
             if not all_lines_for_go:
                 continue
 
-            status_summary = {item['pick_status'] for item in all_lines_for_go}
+            status_set = {item['pick_status'] for item in all_lines_for_go}
 
             # Determine which scenario we are in
-            is_updated_job = 'IN_PROGRESS' in status_summary and 'NOT_STARTED' in status_summary
-            is_fresh_job = 'IN_PROGRESS' not in status_summary
+            is_updated_job = 'IN_PROGRESS' in status_set and 'NOT_STARTED' in status_set
+            # A fresh job is one where no picklist has been started
+            is_fresh_job = 'IN_PROGRESS' not in status_set
 
             if is_fresh_job or is_updated_job:
                 # Generate the HTML. Add a title for updated picklists.
@@ -740,8 +752,9 @@ class ShipperWindow(ctk.CTk):
                         "<td class=\"report-title\">** UPDATED **<br>SHORTAGE JOB REPORT</td>"
                     )
 
-                # Preview the picklist
-                picklist_generator.preview_picklist(html_content)
+                # Generate PDF and send to the shipper's default printer
+                pdf_path = picklist_generator.generate_picklist_pdf(html_content)
+                picklist_generator.send_pdf_to_printer(pdf_path, SHIPPER_PRINTER)
 
                 # Prepare lists of IDs for status updates
                 ids_to_in_progress = []

@@ -15,6 +15,7 @@ import tkinter as tk
 
 from src.logic import waybill_import, part_identifier_import
 from src.config import DB_PATH, APPEARANCE_MODE
+from src.config import ADMIN_PRINTER
 from src.data_manager import DataManager
 from src.logic.bo_report import import_bo_files
 from src.logic import picklist_generator
@@ -647,67 +648,151 @@ class AdminWindow(ctk.CTk):
         messagebox.showinfo("Exported", f"Summary exported to {Path(path).name}")
 
     def _build_fulfillment_tab(self) -> None:
-        """Builds the enhanced UI for the Back-Order Fulfillment tab."""
+        """Builds the final, enhanced UI for the Back-Order Fulfillment tab."""
         self.fulfillment_tab = self.tab_fulfillment
         self.fulfillment_tab.grid_columnconfigure(1, weight=1)
-        self.fulfillment_tab.grid_rowconfigure(0, weight=1)
+        self.fulfillment_tab.grid_rowconfigure(1, weight=1)
 
-        # --- Left Pane: Tabbed lists for jobs ---
-        left_pane = ctk.CTkTabview(self.fulfillment_tab)
-        left_pane.grid(row=0, column=0, padx=10, pady=10, sticky="ns")
-        
-        self.urgent_jobs_tab = left_pane.add("Urgent Jobs")
-        self.inprogress_jobs_tab = left_pane.add("Active Picklists")
+        # --- Top Pane: Actions ---
+        action_pane = ctk.CTkFrame(self.fulfillment_tab)
+        action_pane.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
+        ctk.CTkLabel(action_pane, text="Print Batch of Urgent Jobs:").pack(side="left", padx=(5, 2))
+        self.batch_qty_var = ctk.StringVar(value="5")
+        ctk.CTkEntry(action_pane, textvariable=self.batch_qty_var, width=50).pack(side="left")
+        ctk.CTkButton(action_pane, text="Print Batch", command=self._print_batch).pack(side="left", padx=5)
+
+        ttk.Separator(action_pane, orient="vertical").pack(side="left", fill='y', padx=20, pady=5)
+
+        ctk.CTkLabel(action_pane, text="Print Specific GO:").pack(side="left", padx=(5, 2))
+        self.specific_go_var = ctk.StringVar()
+        ctk.CTkEntry(action_pane, textvariable=self.specific_go_var, width=150).pack(side="left")
+        ctk.CTkButton(action_pane, text="Print GO", command=self._print_specific_go).pack(side="left", padx=5)
+
+        # --- Bottom Pane: Lists and Details ---
+        bottom_pane = ctk.CTkFrame(self.fulfillment_tab)
+        bottom_pane.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="nsew")
+        bottom_pane.grid_columnconfigure(1, weight=1)
+        bottom_pane.grid_rowconfigure(0, weight=1)
+
+        # Left side with tabbed lists for job selection
+        left_list_pane = ctk.CTkTabview(bottom_pane)
+        left_list_pane.grid(row=0, column=0, padx=10, pady=10, sticky="ns")
+        self.urgent_jobs_tab = left_list_pane.add("Urgent Jobs")
+        self.inprogress_jobs_tab = left_list_pane.add("Active Picklists")
         self.urgent_listbox = tk.Listbox(self.urgent_jobs_tab, width=40)
         self.urgent_listbox.pack(fill="both", expand=True)
         self.urgent_listbox.bind("<<ListboxSelect>>", lambda e: self._on_bo_job_select(self.urgent_listbox))
-
         self.inprogress_listbox = tk.Listbox(self.inprogress_jobs_tab, width=40)
         self.inprogress_listbox.pack(fill="both", expand=True)
         self.inprogress_listbox.bind("<<ListboxSelect>>", lambda e: self._on_bo_job_select(self.inprogress_listbox))
 
-        # --- Right Pane: Details and Actions ---
-        right_pane = ctk.CTkFrame(self.fulfillment_tab)
-        right_pane.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
-        right_pane.grid_rowconfigure(1, weight=1)
-        right_pane.grid_columnconfigure(0, weight=1)
+        # Right side for details and actions on the selected item
+        right_detail_pane = ctk.CTkFrame(bottom_pane)
+        right_detail_pane.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        right_detail_pane.grid_rowconfigure(1, weight=1)
+        right_detail_pane.grid_columnconfigure(0, weight=1)
 
-        # Action Buttons
-        action_frame = ctk.CTkFrame(right_pane, fg_color="transparent")
-        action_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        
-        self.generate_picklist_btn = ctk.CTkButton(action_frame, text="Generate Picklist", command=self._preview_manual_picklist, state="disabled")
-        self.generate_picklist_btn.pack(side="left", padx=5)
+        # Action buttons for the selected job
+        selection_action_frame = ctk.CTkFrame(right_detail_pane, fg_color="transparent")
+        selection_action_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
-        self.print_picklist_btn = ctk.CTkButton(
-            action_frame, 
-            text="Print Picklist", 
-            command=self._print_manual_picklist, 
-            state="disabled"
-        )
-        self.print_picklist_btn.pack(side="left", padx=5)
+        self.preview_picklist_btn = ctk.CTkButton(selection_action_frame, text="Preview Selected", command=self._preview_manual_picklist, state="disabled")
+        self.preview_picklist_btn.pack(side="left", padx=5)
 
-        self.reprint_picklist_btn = ctk.CTkButton(action_frame, text="Reprint Updated Picklist", command=self._reprint_manual_picklist, state="disabled")
-        self.reprint_picklist_btn.pack(side="left", padx=5)
-        
+        self.print_selected_btn = ctk.CTkButton(selection_action_frame, text="Print/Reprint Selected", command=self._print_selected_go, state="disabled")
+        self.print_selected_btn.pack(side="left", padx=5)
+
         self.selected_go_number = None
 
         # Details Treeview
-        self.bo_details_tree = ttk.Treeview(right_pane, show="headings")
+        self.bo_details_tree = ttk.Treeview(right_detail_pane, show="headings")
         self.bo_details_tree.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         self._refresh_bo_lists()
     
-    def _refresh_bo_lists(self) -> None:
+    def _print_selected_go(self):
+        """Prints the picklist for the single, currently selected GO number."""
+        if not self.selected_go_number:
+            messagebox.showwarning("No Selection", "Please select a job from the list to print.")
+            return
+        self._generate_and_print_go(self.selected_go_number, ADMIN_PRINTER, ask_confirm=True)
+        self._refresh_bo_lists()
+
+    def _print_batch(self):
+        """Prints a batch of the most urgent picklists."""
+        try:
+            qty_to_print = int(self.batch_qty_var.get())
+            if qty_to_print <= 0: raise ValueError
+        except ValueError:
+            messagebox.showerror("Invalid Quantity", "Please enter a valid positive number for the batch quantity.")
+            return
+
+        urgent_jobs = self.dm.get_urgent_go_numbers()
+        jobs_to_print = urgent_jobs[:qty_to_print]
+
+        if not jobs_to_print:
+            messagebox.showinfo("No Jobs", "No urgent jobs are available to print.")
+            return
+
+        if not messagebox.askyesno("Confirm Batch Print", f"This will send {len(jobs_to_print)} picklists to the printer '{ADMIN_PRINTER}'.\n\nAre you sure you want to continue?"):
+            return
+
+        for go_num, _ in jobs_to_print:
+            self._generate_and_print_go(go_num, ADMIN_PRINTER)
+
+        messagebox.showinfo("Batch Complete", f"{len(jobs_to_print)} picklists have been sent to the printer.")
+        self._refresh_bo_lists()
+
+    def _print_specific_go(self):
+        """Prints the picklist for a single, specified GO number from the entry field."""
+        go_number = self.specific_go_var.get().strip().upper()
+        if not go_number:
+            messagebox.showwarning("Input Required", "Please enter a GO Number to print.")
+            return
+
+        self._generate_and_print_go(go_number, ADMIN_PRINTER, ask_confirm=True)
+        self._refresh_bo_lists()
+
+    def _generate_and_print_go(self, go_number, printer_name, ask_confirm=False):
+        """Helper function to generate, print, and update status for a GO."""
+        if ask_confirm:
+            if not messagebox.askyesno("Confirm Print", f"Print picklist for {go_number} to '{printer_name}'?"):
+                return
+
+        picklist_items = self.dm.get_all_items_for_go(go_number)
+        if not picklist_items:
+            messagebox.showerror("Not Found", f"No back-order items found for GO: {go_number}")
+            return
+
+        is_reprint = any(item['pick_status'] != 'NOT_STARTED' for item in picklist_items)
+
+        html_content = picklist_generator.create_picklist_html(picklist_items)
+        if is_reprint:
+             html_content = html_content.replace(
+                "<td class=\"report-title\">SHORTAGE JOB REPORT</td>",
+                "<td class=\"report-title\">** UPDATED REPRINT **<br>SHORTAGE JOB REPORT</td>"
+            )
+
+        pdf_path = picklist_generator.generate_picklist_pdf(html_content)
+        success = picklist_generator.send_pdf_to_printer(pdf_path, printer_name)
+
+        if success:
+             # Only update status if it was a new picklist generation
+            if not is_reprint:
+                item_ids_to_update = [item['id'] for item in picklist_items if item['pick_status'] == 'NOT_STARTED']
+                if item_ids_to_update:
+                    self.dm.update_bo_items_status(item_ids_to_update, "IN_PROGRESS")
+        else:
+            messagebox.showerror("Printing Failed", "Could not send the picklist to the selected printer.")
+
+    def _refresh_bo_lists(self):
         """Refreshes both listboxes with current job statuses."""
-        # Urgent Jobs (Not Started)
         self.urgent_listbox.delete(0, tk.END)
-        urgent_jobs = self.dm.get_urgent_go_numbers() 
+        urgent_jobs = self.dm.get_urgent_go_numbers()
         for go_num, redcon_status in urgent_jobs:
             self.urgent_listbox.insert(tk.END, f"{go_num} (Urgency: {redcon_status})")
-        
-        # In-Progress Jobs
+
         self.inprogress_listbox.delete(0, tk.END)
         inprogress_jobs = self.dm.get_inprogress_go_numbers()
         for go_num, redcon_status in inprogress_jobs:
@@ -715,20 +800,25 @@ class AdminWindow(ctk.CTk):
     
 
     def _on_bo_job_select(self, listbox_widget: tk.Listbox):
-        """Handles selection in either listbox."""
+        """Handles selection in either listbox to enable buttons and show details."""
         if not listbox_widget.curselection():
+            # If nothing is selected, disable buttons and clear details
+            self.preview_picklist_btn.configure(state="disabled")
+            self.print_selected_btn.configure(state="disabled")
+            for item in self.bo_details_tree.get_children():
+                self.bo_details_tree.delete(item)
             return
 
-        # Clear selection in the other listbox
+        # An item is selected, so enable the action buttons
+        self.preview_picklist_btn.configure(state="normal")
+        self.print_selected_btn.configure(state="normal")
+
+        # Clear the selection in the *other* listbox
         if listbox_widget is self.urgent_listbox:
             self.inprogress_listbox.selection_clear(0, tk.END)
-            self.generate_picklist_btn.configure(state="normal")
-            self.reprint_picklist_btn.configure(state="disabled")
         else:
             self.urgent_listbox.selection_clear(0, tk.END)
-            self.generate_picklist_btn.configure(state="disabled")
-            self.reprint_picklist_btn.configure(state="normal")
-        
+
         selection = listbox_widget.get(listbox_widget.curselection())
         self.selected_go_number = selection.split(" ")[0]
         self._populate_bo_details(self.selected_go_number)
@@ -739,29 +829,19 @@ class AdminWindow(ctk.CTk):
             self.bo_details_tree.delete(item)
 
         items = self.dm.get_all_items_for_go(go_number)
-        
-        columns = [
-            "Item #", "Part #", "Status", 
-            "Qty Req", "Qty Fulfilled", "Qty Open", 
-            "AMO Stock", "KB Stock", "Surplus Stock"
-        ]
+
+        columns = ["Item #", "Part #", "Status", "Qty Req", "Qty Fulfilled", "Qty Open", "AMO Stock", "KB Stock", "Surplus Stock"]
         self.bo_details_tree.configure(columns=columns)
         for col in columns:
             self.bo_details_tree.heading(col, text=col)
             self.bo_details_tree.column(col, width=100, anchor="center")
-        
+
         for item in items:
             open_qty = item.get('qty_req', 0) - item.get('qty_fulfilled', 0)
             self.bo_details_tree.insert("", "end", values=(
-                item.get('item_number', ''),
-                item.get('part_number', ''),
-                item.get('pick_status', ''),
-                item.get('qty_req', 0),
-                item.get('qty_fulfilled', 0),
-                open_qty,
-                item.get('amo_stock_qty', 0),
-                item.get('kanban_stock_qty', 0),
-                item.get('surplus_stock_qty', 0),
+                item.get('item_number', ''), item.get('part_number', ''), item.get('pick_status', ''),
+                item.get('qty_req', 0), item.get('qty_fulfilled', 0), open_qty,
+                item.get('amo_stock_qty', 0), item.get('kanban_stock_qty', 0), item.get('surplus_stock_qty', 0),
             ))
 
     def _generate_and_process_picklist(self, preview: bool = False, print_it: bool = False, reprint: bool = False):
@@ -795,7 +875,18 @@ class AdminWindow(ctk.CTk):
         self._populate_bo_details(self.selected_go_number)
 
     def _preview_manual_picklist(self):
-        self._generate_and_process_picklist(preview=True)
+        """Previews the picklist for the currently selected GO number."""
+        if not self.selected_go_number:
+            messagebox.showwarning("No Selection", "Please select a job from the list to preview.")
+            return
+
+        picklist_items = self.dm.get_all_items_for_go(self.selected_go_number)
+        if not picklist_items:
+            messagebox.showerror("Error", "Could not retrieve items for this GO number.")
+            return
+
+        html_content = picklist_generator.create_picklist_html(picklist_items)
+        picklist_generator.preview_picklist(html_content)
 
     def _print_manual_picklist(self, reprint=False):
         """Generates a PDF and sends it to a user-selected printer."""

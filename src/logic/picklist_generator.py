@@ -44,15 +44,16 @@ HTML_TEMPLATE = """
         .logo {{ width: 150px; }}
         .report-title {{ font-size: 24px; font-weight: bold; text-align: center; }}
         .info-grid td {{ border: 1px solid black; padding: 5px; }}
-        .item-table th, .item-table td {{ border: 1px solid black; padding: 8px; text-align: left; vertical-align: top; }}
+        .item-table th, .item-table td {{ border: 1px solid black; padding: 8px; text-align: center; vertical-align: top; }}
         .item-table th {{ background-color: #f2f2f2; font-weight: bold; }}
         .center {{ text-align: center; }}
         .stock-header {{ font-weight:bold; text-align:center; }}
         .stock-cell {{ background-color: #EAEAEA; font-weight: bold; text-align: center; }}
 
         @media print {{
-            thead {{ display: table-header-group; }} /* Ensures table header repeats */
-            body {{ margin-top: 200px; }} /* Add space on each page for the fixed header */
+            @page {{ size: landscape; }} /* Set print orientation to landscape */
+            thead {{ display: table-header-group; }}
+            body {{ margin-top: 200px; }}
             .header-container {{
                 position: fixed;
                 top: 0;
@@ -85,10 +86,27 @@ HTML_TEMPLATE = """
         </table>
         <p><strong>PRINTED ON: {print_date}</strong></p>
     </div>
-
     <table class="item-table">
         <thead>
-            </thead>
+            <tr>
+                <th rowspan="2">ORACLE STATUS</th>
+                <th rowspan="2">ITEM #</th>
+                <th rowspan="2">DISCRETE JOB</th>
+                <th rowspan="2">PART #</th>
+                <th rowspan="2">OPEN QTY</th>
+                <th rowspan="2">RCVD QTY</th>
+                <th colspan="2">AMO</th>
+                <th colspan="2">KB</th>
+                <th colspan="2">SURPLUS</th>
+                <th rowspan="2">DATE OF PICKING</th>
+                <th rowspan="2">INITIALS</th>
+            </tr>
+            <tr>
+                <th class="stock-header">PICKED</th><th class="stock-header">STOCK</th>
+                <th class="stock-header">PICKED</th><th class="stock-header">STOCK</th>
+                <th class="stock-header">PICKED</th><th class="stock-header">STOCK</th>
+            </tr>
+        </thead>
         <tbody>
             {table_rows}
         </tbody>
