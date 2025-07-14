@@ -146,5 +146,6 @@ These tables together:
 - BO integration activates when the ADMIN uploads a BO Excel file
 
 ## 12. PERSONAL NOTES (IGNORE THIS SECTION)
-- pyinstaller --noconfirm --windowed --onefile src/main.py to make the main.exe
+- For actual release: pyinstaller --noconfirm --windowed --onefile --add-data "eaton_logo.png;." src/main.py
+- For debugging: pyinstaller --noconfirm --console --onefile --add-data "eaton_logo.png;." src/main.py
 

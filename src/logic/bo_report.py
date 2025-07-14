@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Dict, Set, Tuple, List
 from datetime import datetime
 
+import os
+import sys
+
 from src.config import DB_PATH
 from src.data_manager import DataManager
 
@@ -143,3 +146,27 @@ def import_bo_files(backlog_path: str, redcon_path: str, db_path: str = DB_PATH)
     deleted = dm.reconcile_picking_items(list(active_keys))
     
     return created, updated, deleted
+
+def print_picklist(html_content: str) -> bool:
+    """
+    Saves HTML to a temp file and attempts to open the print dialog.
+    Returns True on success, False on failure.
+    """
+    temp_dir = Path(__file__).resolve().parent.parent / "temp"
+    temp_dir.mkdir(exist_ok=True)
+    filepath = temp_dir / "picklist_to_print.html"
+    
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        
+        if sys.platform == "win32":
+            os.startfile(filepath, "print")
+        else:
+            # Fallback for MacOS and Linux
+            webbrowser.open(f"file://{filepath.resolve()}")
+        
+        return True
+    except Exception as e:
+        print(f"Error printing picklist: {e}")
+        return False

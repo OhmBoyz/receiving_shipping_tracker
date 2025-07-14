@@ -12,14 +12,13 @@ from typing import Dict, Iterable, List, Optional
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
-from src.logic import waybill_import, part_identifier_import
 
+from src.logic import waybill_import, part_identifier_import
 from src.config import DB_PATH, APPEARANCE_MODE
 from src.data_manager import DataManager
-
 from src.logic.bo_report import import_bo_files
-
 from src.logic import picklist_generator
+from src.ui.printer_selection import PrinterSelectDialog
 
 logger = logging.getLogger(__name__)
 
@@ -678,9 +677,17 @@ class AdminWindow(ctk.CTk):
         action_frame = ctk.CTkFrame(right_pane, fg_color="transparent")
         action_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         
-        self.generate_picklist_btn = ctk.CTkButton(action_frame, text="Generate Picklist", command=self._generate_manual_picklist, state="disabled")
+        self.generate_picklist_btn = ctk.CTkButton(action_frame, text="Generate Picklist", command=self._preview_manual_picklist, state="disabled")
         self.generate_picklist_btn.pack(side="left", padx=5)
-        
+
+        self.print_picklist_btn = ctk.CTkButton(
+            action_frame, 
+            text="Print Picklist", 
+            command=self._print_manual_picklist, 
+            state="disabled"
+        )
+        self.print_picklist_btn.pack(side="left", padx=5)
+
         self.reprint_picklist_btn = ctk.CTkButton(action_frame, text="Reprint Updated Picklist", command=self._reprint_manual_picklist, state="disabled")
         self.reprint_picklist_btn.pack(side="left", padx=5)
         
@@ -757,8 +764,8 @@ class AdminWindow(ctk.CTk):
                 item.get('surplus_stock_qty', 0),
             ))
 
-    def _generate_manual_picklist(self, reprint=False):
-        """Generates or reprints a picklist for the selected GO."""
+    def _generate_and_process_picklist(self, preview: bool = False, print_it: bool = False, reprint: bool = False):
+        """Core logic for generating, previewing, or printing a picklist."""
         if not self.selected_go_number:
             return
 
@@ -768,21 +775,72 @@ class AdminWindow(ctk.CTk):
             return
 
         html_content = picklist_generator.create_picklist_html(picklist_items)
-        picklist_generator.preview_picklist(html_content)
+
+        if preview:
+            picklist_generator.preview_picklist(html_content)
         
+        if print_it:
+            success = picklist_generator.print_picklist(html_content)
+            if not success:
+                messagebox.showerror("Print Error", "Could not automatically print. Opening preview instead.")
+                picklist_generator.preview_picklist(html_content)
+
         if not reprint:
             item_ids_to_update = [item['id'] for item in picklist_items if item['pick_status'] == 'NOT_STARTED']
             if item_ids_to_update:
                 self.dm.update_bo_items_status(item_ids_to_update, "IN_PROGRESS")
             messagebox.showinfo("Picklist Generated", f"Picklist for {self.selected_go_number} has been generated and status updated to IN_PROGRESS.")
+        
+        self._refresh_bo_lists()
+        self._populate_bo_details(self.selected_go_number)
+
+    def _preview_manual_picklist(self):
+        self._generate_and_process_picklist(preview=True)
+
+    def _print_manual_picklist(self, reprint=False):
+        """Generates a PDF and sends it to a user-selected printer."""
+        if not self.selected_go_number:
+            return
+
+        # 1. Get the list of available printers
+        printers = picklist_generator.get_available_printers()
+        if not printers:
+            messagebox.showerror("No Printers Found", "Could not find any installed printers on this system.")
+            return
+
+        # 2. Ask the user to select a printer
+        dialog = PrinterSelectDialog(self, printers)
+        selected_printer = dialog.selected_printer
+
+        if not selected_printer:
+            messagebox.showinfo("Cancelled", "Print job cancelled.")
+            return
+
+        # 3. Generate the HTML and then the PDF
+        picklist_items = self.dm.get_all_items_for_go(self.selected_go_number)
+        if not picklist_items:
+            return
+        html_content = picklist_generator.create_picklist_html(picklist_items)
+        pdf_path = picklist_generator.generate_picklist_pdf(html_content)
+
+        # 4. Send the PDF to the selected printer
+        success = picklist_generator.send_pdf_to_printer(pdf_path, selected_printer)
+
+        if success:
+            messagebox.showinfo("Print Job Sent", f"Picklist sent to printer: {selected_printer}")
+            # Update status if it's a new picklist
+            if not reprint:
+                item_ids_to_update = [item['id'] for item in picklist_items if item['pick_status'] == 'NOT_STARTED']
+                if item_ids_to_update:
+                    self.dm.update_bo_items_status(item_ids_to_update, "IN_PROGRESS")
         else:
-             messagebox.showinfo("Picklist Reprinted", f"Picklist for {self.selected_go_number} has been reprinted with the latest information.")
+            messagebox.showerror("Printing Failed", "Could not send the picklist to the printer.")
 
         self._refresh_bo_lists()
-        self._populate_bo_details(self.selected_go_number) # Refresh details view
+        self._populate_bo_details(self.selected_go_number)
 
     def _reprint_manual_picklist(self):
-        self._generate_manual_picklist(reprint=True)
+        self._print_manual_picklist(reprint=True)
     
     # --------------------------- Database Viewer ---------------------------
     def _build_db_tab(self) -> None:
