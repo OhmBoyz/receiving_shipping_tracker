@@ -68,6 +68,7 @@ class ShipperWindow(ctk.CTk):
         self.csv_path = csv_path
         self.logic = ScannerLogic(self.dm, csv_path)
         self.user_id = user_id
+        self.part_row_widgets = {}
         self.session_id: Optional[int] = None
         self.affected_go_items = set()
         self._summary_recorded: bool = False
@@ -169,8 +170,9 @@ class ShipperWindow(ctk.CTk):
         self.sidebar_frame.rowconfigure(2, weight=1)
 
         # --- Sidebar Widgets ---
-        self.progress_frame = ctk.CTkFrame(self.sidebar_frame)
-        self.progress_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        #self.progress_frame = ctk.CTkFrame(self.sidebar_frame)
+        self.progress_frame = ctk.CTkScrollableFrame(self.sidebar_frame)
+        self.progress_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
         self.alloc_frame = ctk.CTkFrame(self.sidebar_frame)
         self.alloc_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         self.amo_label = ctk.CTkLabel(self.alloc_frame, text="AMO", height=80, font=self.font_sidebar_title, fg_color="gray80", corner_radius=8)
@@ -301,6 +303,7 @@ class ShipperWindow(ctk.CTk):
         for widget in self.lines_frame.winfo_children():
             widget.destroy()
         self.lines = []
+        self.part_row_widgets = {}
 
         rows = self.dm.get_waybill_lines_multi(waybills)
         for row in rows:
@@ -342,7 +345,8 @@ class ShipperWindow(ctk.CTk):
         for i, (part, lines) in enumerate(part_groups.items()):
             row_frame = ctk.CTkFrame(scrollable_frame)
             row_frame.grid(row=i, column=0, sticky="ew", pady=2)
-            
+            self.part_row_widgets[part] = row_frame
+
             row_frame.columnconfigure(0, minsize=220)
             row_frame.columnconfigure(1, minsize=90)
             row_frame.columnconfigure(2, weight=1)
@@ -495,7 +499,9 @@ class ShipperWindow(ctk.CTk):
     def record_partial_summary(self) -> None:
         if self.session_id is None or self._summary_recorded:
             return
-        self._process_automated_picklists()
+        """ REMOVE TO ENABLE BO LOGIC
+        self._process_automated_picklists() 
+        """
         if self.active_waybill:
             self._record_summary()
         self.dm.end_session(self.session_id)
@@ -537,49 +543,76 @@ class ShipperWindow(ctk.CTk):
             except Exception:
                 pass
 
-    def _hide_suggestions(self) -> None:
-        if self.suggestion_win is not None:
-            try:
-                self.suggestion_win.withdraw()
-            except Exception:
-                pass
+    def _show_suggestions(self, event=None):
+        """
+        Shows a TopLevel window with part suggestions. The window is placed
+        intelligently above or below the entry field and only shows parts
+        that are not yet completed.
+        """
+        self._hide_suggestions()  # Close any previous suggestion box
 
-    def _show_suggestions(self, event=None) -> None:
-        text = self.scan_var.get().strip().upper()
+        text = self.scan_var.get().upper()
         if not text:
-            self._hide_suggestions()
             return
-        parts = sorted({l.part for l in self.lines if l.part.startswith(text)})
-        if not parts:
-            self._hide_suggestions()
+
+        # --- NEW: Filter out completed parts ---
+        # Create a set of parts that still have items remaining
+        active_parts = {line.part for line in self.lines if line.remaining() > 0}
+        
+        # Generate suggestions only from the active parts list
+        suggestions = sorted([p for p in active_parts if p.startswith(text)])
+        
+        if not suggestions:
             return
-        if self.suggestion_win is None:
-            self.suggestion_win = tk.Toplevel(self)
-            self.suggestion_win.overrideredirect(True)
-            self.suggestion_list = tk.Listbox(self.suggestion_win)
-            self.suggestion_list.pack(fill="both", expand=True)
-            self.suggestion_list.bind("<Double-Button-1>", self._on_suggestion_select)
+
+        # --- Smart Placement Logic ---
+        x_pos = self.scan_entry.winfo_rootx()
+        entry_y = self.scan_entry.winfo_rooty()
+        entry_height = self.scan_entry.winfo_height()
+        screen_height = self.winfo_screenheight()
+
+        # Estimate height for up to 5 suggestions (a reasonable max display)
+        num_items_to_show = min(len(suggestions), 5)
+        suggestion_box_height = num_items_to_show * 29 + 5  # Approx. 29px per button
+
+        # Decide if the box should appear above or below the entry field
+        if (entry_y + entry_height + suggestion_box_height) > screen_height:
+            # Not enough space below, place it above
+            y_pos = entry_y - suggestion_box_height
         else:
-            self.suggestion_list.delete(0, tk.END)
-        for part in parts:
-            self.suggestion_list.insert(tk.END, part)
-        x = self.scan_entry.winfo_rootx()
-        y = self.scan_entry.winfo_rooty() + self.scan_entry.winfo_height()
-        self.suggestion_win.geometry(f"+{x}+{y}")
-        self.suggestion_win.deiconify()
+            # Enough space below, place it below
+            y_pos = entry_y + entry_height
 
-    def _on_suggestion_select(self, event=None) -> None:
-        if self.suggestion_list is None:
-            return
-        try:
-            part = self.suggestion_list.get(tk.ACTIVE)
-        except Exception:
-            return
-        self.scan_var.set(part)
+        # --- Create the suggestion window using standard widgets ---
+        self.suggestion_win = ctk.CTkToplevel(self)
+        self.suggestion_win.overrideredirect(True) # No title bar
+        self.suggestion_win.geometry(f"{self.scan_entry.winfo_width()}x{suggestion_box_height}+{int(x_pos)}+{int(y_pos)}")
+        self.suggestion_win.attributes("-topmost", True)
+
+        scroll_frame = ctk.CTkScrollableFrame(self.suggestion_win, fg_color="transparent")
+        scroll_frame.pack(expand=True, fill="both")
+
+        for item in suggestions:
+            button = ctk.CTkButton(
+                scroll_frame,
+                text=item,
+                command=lambda i=item: self._on_suggestion_select(i),
+                anchor="w"
+            )
+            button.pack(fill="x", padx=2, pady=1)
+
+
+    def _hide_suggestions(self):
+        """Destroys the suggestion window if it exists."""
+        if self.suggestion_win:
+            self.suggestion_win.destroy()
+            self.suggestion_win = None
+
+    def _on_suggestion_select(self, selection: str):
+        """Fills the entry with the selected suggestion and processes the scan."""
+        self.scan_var.set(selection)
         self._hide_suggestions()
-        self.process_scan()
-
-
+        self.process_scan() # Directly process the scan after selection
 
     def _update_last_entry(self, part: str, qty: int, allocations: Dict[str, int]) -> None:
         alloc_parts = []
@@ -600,6 +633,13 @@ class ShipperWindow(ctk.CTk):
         self.history_box.configure(state="disabled")
 
     def process_scan(self, event=None) -> None:
+
+        default_color = ctk.ThemeManager.theme["CTkFrame"]["fg_color"]
+        
+        for part_widget in self.part_row_widgets.values():
+            part_widget.configure(fg_color=default_color)
+
+
         self._reset_alloc_labels()
         self._hide_suggestions()
         raw = self.scan_var.get().strip()
@@ -635,6 +675,7 @@ class ShipperWindow(ctk.CTk):
         bo_allocations = {}
         
         # 1. Prioritize fulfilling Back Orders
+        """ REMOVE TO ENABLE BO LOGIC
         open_bo_lines = self.dm.get_open_bo_lines(part)
         if open_bo_lines:
             for bo_id, go_item, qty_req, qty_fulfilled in open_bo_lines:
@@ -668,7 +709,7 @@ class ShipperWindow(ctk.CTk):
                 first_go_item = open_bo_lines[0][1] # e.g., 'CSVQ005405-002S1'
                 go_number = first_go_item.split('-')[0]
                 self.affected_go_items.add(go_number)
-
+        """
         # 2. Allocate the remaining quantity to the waybill (AMO/KANBAN)
         #    and update the total waybill progress with the original total.
         try:
@@ -708,6 +749,12 @@ class ShipperWindow(ctk.CTk):
                 raw_scan=raw,
                 allocation_details=alloc_details_str # Pass the new data here
             )
+
+        if part in self.part_row_widgets:
+            row_to_highlight = self.part_row_widgets[part]
+            
+            # Change the color to a highlight color (e.g., yellow)
+            row_to_highlight.configure(fg_color="#FBFF00") 
 
         self.refresh_progress_table()
         self.scan_var.set("")
